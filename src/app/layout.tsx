@@ -4,7 +4,7 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = {
   title: {
     template: '%s - Sidekick',
-    default: 'Sidekick - a swim app for teams',
+    default: 'Sidekick - A swim app for teams',
   },
 }
 
