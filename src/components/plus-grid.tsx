@@ -24,7 +24,7 @@ export function PlusGridRow({
         'group/row relative isolate pt-[calc(theme(spacing.2)+1px)] last:pb-[calc(theme(spacing.2)+1px)]',
       )}
     >
-      <div
+      {/* <div
         aria-hidden="true"
         className="absolute inset-y-0 left-1/2 -z-10 w-screen -translate-x-1/2"
       >
@@ -32,7 +32,7 @@ export function PlusGridRow({
         <div className="absolute inset-x-0 top-2 border-t border-black/5"></div>
         <div className="absolute inset-x-0 bottom-0 hidden border-b border-black/5 group-last/row:block"></div>
         <div className="absolute inset-x-0 bottom-2 hidden border-b border-black/5 group-last/row:block"></div>
-      </div>
+      </div> */}
       {children}
     </div>
   )
@@ -47,7 +47,7 @@ export function PlusGridItem({
 }) {
   return (
     <div className={clsx(className, 'group/item relative')}>
-      <PlusGridIcon
+      {/* <PlusGridIcon
         placement="top left"
         className="hidden group-first/item:block"
       />
@@ -59,7 +59,7 @@ export function PlusGridItem({
       <PlusGridIcon
         placement="bottom right"
         className="hidden group-last/row:block"
-      />
+      /> */}
       {children}
     </div>
   )

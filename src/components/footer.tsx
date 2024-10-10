@@ -3,7 +3,6 @@ import { Button } from './button'
 import { Container } from './container'
 import { Gradient } from './gradient'
 import { Link } from './link'
-import { Logo } from './logo'
 import { Subheading } from './text'
 
 function CallToAction() {
@@ -145,10 +144,10 @@ function SocialLinks() {
   )
 }
 
-function Copyright() {
+export function Copyright() {
   return (
     <div className="text-sm/6 text-gray-950">
-      &copy; {new Date().getFullYear()} Radiant Inc.
+      &copy; {new Date().getFullYear()} Sidekick
     </div>
   )
 }
@@ -161,29 +160,27 @@ export function Footer() {
         <Container>
           <CallToAction />
           <PlusGrid className="pb-16">
-            <PlusGridRow>
+            {/* <PlusGridRow>
               <div className="grid grid-cols-2 gap-y-10 pb-6 lg:grid-cols-6 lg:gap-8">
                 <div className="col-span-2 flex">
-                  <PlusGridItem className="pt-6 lg:pb-6">
-                    <Logo className="h-9" />
-                  </PlusGridItem>
+                  <Logo className="h-9" />
                 </div>
                 <div className="col-span-2 grid grid-cols-2 gap-x-8 gap-y-12 lg:col-span-4 lg:grid-cols-subgrid lg:pt-6">
                   <Sitemap />
                 </div>
               </div>
-            </PlusGridRow>
+            </PlusGridRow> */}
             <PlusGridRow className="flex justify-between">
               <div>
                 <PlusGridItem className="py-3">
                   <Copyright />
                 </PlusGridItem>
               </div>
-              <div className="flex">
+              {/* <div className="flex">
                 <PlusGridItem className="flex items-center gap-8 py-3">
                   <SocialLinks />
                 </PlusGridItem>
-              </div>
+              </div> */}
             </PlusGridRow>
           </PlusGrid>
         </Container>
