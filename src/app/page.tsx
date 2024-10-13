@@ -19,9 +19,9 @@ export const metadata: Metadata = {
 
 function Hero() {
   return (
-    <div className="relative h-screen">
+    <div className="relative min-h-screen">
       <Gradient className="absolute inset-0 bottom-0 ring-1 ring-inset ring-black/5" />
-      <Container className="relative h-full">
+      <Container className="relative h-full pb-10">
         <div className="flex h-full flex-col justify-between">
           <Navbar
             banner={
@@ -33,9 +33,9 @@ function Hero() {
               </Link>
             }
           />
-          <div className="pb-24 pt-16 sm:pb-32 sm:pt-24 md:pb-48 md:pt-32">
+          <div className="pt-16 sm:pt-24 md:pt-32">
             <h1 className="font-display text-balance text-6xl/[0.9] font-medium leading-tight tracking-tight text-gray-950 sm:text-8xl/[0.8] sm:leading-none md:text-9xl/[0.8] md:leading-none">
-              Swim made fun in teams
+              Swim app for teams
             </h1>
             <p className="mt-8 max-w-lg text-xl/7 font-medium text-gray-950/75 sm:text-2xl/8">
               Sidekick helps a swim team track their workout, stay connected,
@@ -55,6 +55,9 @@ function Hero() {
               </Button> */}
             </div>
             <p className="mt-8">*Android app coming soon</p>
+            <p className="mt-8">
+              Contact <u>admin@sidekickswim.com</u> for help.
+            </p>
           </div>
         </div>
       </Container>
