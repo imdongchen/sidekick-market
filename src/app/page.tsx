@@ -42,7 +42,7 @@ function Hero() {
               and manage schedules and roasters.
             </p>
             <div className="mt-12 flex flex-col gap-x-6 gap-y-4 sm:flex-row">
-              <Link href="#">
+              <Link href="https://apps.apple.com/us/app/sidekick-swim-app-for-teams/id6677036644">
                 <img
                   alt="Download iOS app"
                   src="/download-on-the-app-store.svg"
