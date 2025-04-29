@@ -49,12 +49,23 @@ function Hero() {
                   className="h-14"
                 />
               </Link>
+              <Link href="https://github.com/imdongchen/sidekick-market/releases/download/android%401.6.27/sidekick-android.aab">
+                <img
+                  alt="Download Android app"
+                  src="/download-android.png"
+                  className="h-14"
+                />
+              </Link>
               {/* <Button href="#">Get started</Button>
               <Button variant="secondary" href="/pricing">
                 See pricing
               </Button> */}
             </div>
-            <p className="mt-8">*Android app coming soon</p>
+            <p className="mt-8">
+              *The Android app is currently in beta testing and not yet publicly
+              available on Google Play. You can download and install it directly
+              from the link above.
+            </p>
             <p className="mt-8">
               Contact <u>admin@sidekickswim.com</u> for help.
             </p>
