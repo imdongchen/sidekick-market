@@ -64,7 +64,7 @@ function Hero() {
             <p className="mt-8">
               *The Android app is currently in beta testing and not yet publicly
               available on Google Play. You can download and install it directly
-              from the link above.
+              from the link above. Not working? Try downloading this <Link href="https://github.com/imdongchen/sidekick/releases/download/v1.6.28/build-1749947550072.apk">APK</Link> instead.
             </p>
             <p className="mt-8">
               Contact <u>admin@sidekickswim.com</u> for help.
