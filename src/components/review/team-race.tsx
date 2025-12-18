@@ -53,7 +53,7 @@ export function TeamRaceSlide({ data, onNext }: TeamRaceSlideProps) {
   return (
     <div
       ref={ref}
-      className={`relative h-screen w-full bg-gradient-to-br ${seasonColors[currentSeason]}`}
+      className={`relative min-h-screen w-full bg-gradient-to-br ${seasonColors[currentSeason]}`}
     >
       {/* Animated background elements */}
       <div className="absolute inset-0">
@@ -81,8 +81,8 @@ export function TeamRaceSlide({ data, onNext }: TeamRaceSlideProps) {
         </h1>
       </div>
 
-      {/* Swim lanes */}
-      <div className="absolute left-0 right-0 top-1/2 max-h-[70vh] -translate-y-1/2 space-y-8 overflow-y-auto px-8">
+      {/* Swim lanes - scroll with the page, not independently */}
+      <div className="absolute inset-0 mt-32 space-y-8 px-8 pb-40">
         {sortedSwimmers.map((swimmer, index) => {
           const progress = (swimmer.distance / maxDistance) * 100
           const delay = index * 0.2
@@ -168,68 +168,69 @@ export function TeamRaceSlide({ data, onNext }: TeamRaceSlideProps) {
 
       {/* Celebration animation */}
       {showCelebration && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0 }}
-          className="absolute bottom-20 left-0 right-0 z-20 m-auto -translate-x-1/2 text-center"
-        >
+        <div className="fixed bottom-8 left-1/2 z-20 w-full -translate-x-1/2 text-center">
           <motion.div
-            animate={{
-              scale: [1, 1.1, 1],
-              rotate: [0, 5, -5, 0],
-            }}
-            transition={{
-              duration: 0.5,
-              repeat: Infinity,
-              repeatDelay: 1,
-            }}
-            className="mb-4 text-6xl"
+            initial={{ opacity: 0, scale: 0 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0 }}
           >
-            '🏆'
-          </motion.div>
-          <motion.h2
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-3xl font-bold text-white md:text-4xl"
-          >
-            Winner: {sortedSwimmers[0]?.name}!
-          </motion.h2>
-
-          {/* Confetti */}
-          {[...Array(30)].map((_, i) => (
             <motion.div
-              key={i}
-              initial={{
-                x: 0,
-                y: 0,
-                opacity: 1,
-                rotate: 0,
-              }}
               animate={{
-                x: (Math.random() - 0.5) * 400,
-                y: Math.random() * 200 + 100,
-                opacity: 0,
-                rotate: 360,
+                scale: [1, 1.1, 1],
+                rotate: [0, 5, -5, 0],
               }}
               transition={{
-                duration: 2 + Math.random(),
-                delay: Math.random() * 0.5,
-                ease: 'easeOut',
+                duration: 0.5,
+                repeat: Infinity,
+                repeatDelay: 1,
               }}
-              className="absolute left-1/2 top-0 h-3 w-3"
-              style={{
-                backgroundColor: [
-                  '#FFD700',
-                  '#FF6B6B',
-                  '#4ECDC4',
-                  '#95E1D3',
-                  '#F38181',
-                ][Math.floor(Math.random() * 5)],
-              }}
-            />
-          ))}
-        </motion.div>
+              className="mb-4 text-6xl"
+            >
+              🏆
+            </motion.div>
+            <motion.h2
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-3xl font-bold text-white md:text-4xl"
+            >
+              Winner: {sortedSwimmers[0]?.name}!
+            </motion.h2>
+
+            {/* Confetti */}
+            {[...Array(30)].map((_, i) => (
+              <motion.div
+                key={i}
+                initial={{
+                  x: 0,
+                  y: 0,
+                  opacity: 1,
+                  rotate: 0,
+                }}
+                animate={{
+                  x: (Math.random() - 0.5) * 400,
+                  y: Math.random() * 200 + 100,
+                  opacity: 0,
+                  rotate: 360,
+                }}
+                transition={{
+                  duration: 2 + Math.random(),
+                  delay: Math.random() * 0.5,
+                  ease: 'easeOut',
+                }}
+                className="absolute left-1/2 top-0 h-3 w-3"
+                style={{
+                  backgroundColor: [
+                    '#FFD700',
+                    '#FF6B6B',
+                    '#4ECDC4',
+                    '#95E1D3',
+                    '#F38181',
+                  ][Math.floor(Math.random() * 5)],
+                }}
+              />
+            ))}
+          </motion.div>
+        </div>
       )}
     </div>
   )

@@ -16,7 +16,11 @@ export interface SwimmerData {
   photo?: string
   distance: number // in meters or yards
   count: number
-  longestStreak: number // weeks
+  longestStreak: {
+    start: string // YYYY-MM-DD
+    end: string // YYYY-MM-DD
+    count: number
+  }
   timedSwims?: TimedSwim[] // timed swims with PRs
   dailyData: {
     date: string // YYYY-MM-DD
@@ -24,7 +28,8 @@ export interface SwimmerData {
     count: number
   }[]
   weeklyData: {
-    week: string // YYYY-WW
+    start: string // YYYY-MM-DD
+    end: string // YYYY-MM-DD
     distance: number
     count: number
   }[]

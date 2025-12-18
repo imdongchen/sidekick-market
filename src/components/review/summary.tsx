@@ -31,7 +31,7 @@ export function SummarySlide({ data }: SummarySlideProps) {
   return (
     <div
       ref={ref}
-      className="relative flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 p-6"
+      className="relative flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 p-6"
     >
       {/* Mobile-optimized container (max-width for screenshot) */}
       <div className="mx-auto w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl">
@@ -114,11 +114,34 @@ export function SummarySlide({ data }: SummarySlideProps) {
               transition={{ duration: 0.6, delay: 0.6 }}
               className="rounded-2xl bg-gradient-to-br from-purple-50 to-purple-100 p-4 text-center"
             >
-              <p className="mb-1 text-xs text-gray-600">Longest Streak</p>
-              <p className="text-3xl font-bold text-purple-600">
-                <AnimatedNumber start={0} end={swimmer.longestStreak} />
+              <p className="mb-1 text-xs text-gray-600">
+                Longest Streak | weeks
               </p>
-              <p className="mt-1 text-xs text-gray-500">weeks</p>
+              <p className="text-3xl font-bold text-purple-600">
+                <AnimatedNumber start={0} end={swimmer.longestStreak.count} />
+                {/* <span className="ml-1 mt-1 text-xs font-normal text-gray-500">
+                  weeks
+                </span> */}
+              </p>
+              {swimmer.longestStreak.start && swimmer.longestStreak.end && (
+                <p className="mt-1 text-xs text-gray-500">
+                  {new Date(swimmer.longestStreak.start).toLocaleDateString(
+                    'en-US',
+                    {
+                      month: 'short',
+                      day: 'numeric',
+                    },
+                  )}{' '}
+                  -{' '}
+                  {new Date(swimmer.longestStreak.end).toLocaleDateString(
+                    'en-US',
+                    {
+                      month: 'short',
+                      day: 'numeric',
+                    },
+                  )}
+                </p>
+              )}
             </motion.div>
           </div>
 
@@ -203,7 +226,7 @@ export function SummarySlide({ data }: SummarySlideProps) {
           <div className="flex items-center gap-2">
             <SidekickQRCode value="https://sidekickswim.com" size={30} />
             <span className="text-xs font-semibold text-gray-400">
-              Sidekick
+              Sidekick Swim
             </span>
           </div>
         </motion.div>
@@ -242,8 +265,7 @@ function getBestTimes(timedSwims: TimedSwim[]): TimedSwim[] {
   const sortedEvents = Object.values(eventMap).sort(
     (a, b) => b.distance - a.distance,
   )
-  console.log('sortedEvents', sortedEvents)
-  while (sortedBestTimes.length < 3) {
+  while (sortedBestTimes.length < 3 && sortedEvents.length > 0) {
     const event = sortedEvents.pop()
     if (event) {
       sortedBestTimes.push(event)
