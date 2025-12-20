@@ -26,13 +26,6 @@ const strokeIcons: Record<string, string> = {
   medley: '🎯',
 }
 
-// Format time in seconds to MM:SS.mm format
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = (seconds % 60).toFixed(2)
-  return `${mins}:${secs.padStart(5, '0')}`
-}
-
 export function PersonalRecordsSlide({ data }: PersonalRecordsSlideProps) {
   const ref = useRef(null)
   const isInView = useInView(ref, { once: true })
@@ -50,8 +43,8 @@ export function PersonalRecordsSlide({ data }: PersonalRecordsSlideProps) {
     ...timedSwimPRs.map((swim, index) => ({
       id: `timed-pr-${index}`,
       type: 'timed_swim_pr' as const,
-      label: `${swim.stroke.charAt(0).toUpperCase() + swim.stroke.slice(1)} ${swim.distance}m`,
-      value: formatTime(swim.time),
+      label: `${swim.distance} ${swim.stroke.charAt(0).toUpperCase() + swim.stroke.slice(1)} `,
+      value: swim.time,
       date: swim.date || new Date().toISOString().split('T')[0],
       description: `Personal Record`,
       stroke: swim.stroke,
@@ -181,11 +174,6 @@ export function PersonalRecordsSlide({ data }: PersonalRecordsSlideProps) {
                         >
                           {record.value}
                         </p>
-                        {isTimedSwim && record.distance && (
-                          <p className="mb-1 text-xs text-white/60">
-                            {record.distance}m • {record.stroke}
-                          </p>
-                        )}
                         {record.description && (
                           <p className="text-sm text-white/70">
                             {record.description}

@@ -20,7 +20,7 @@ export function ReviewCarousel({
   const [touchEnd, setTouchEnd] = useState<number | null>(null)
 
   // Minimum swipe distance (in px)
-  const minSwipeDistance = 50
+  const minSwipeDistance = 100
 
   const onTouchStart = (e: React.TouchEvent) => {
     setTouchEnd(null)
@@ -50,7 +50,7 @@ export function ReviewCarousel({
     _event: MouseEvent | TouchEvent | PointerEvent,
     info: PanInfo,
   ) => {
-    const threshold = 50
+    const threshold = 100
     if (info.offset.x > threshold && currentIndex > 0) {
       onIndexChange(currentIndex - 1)
     } else if (

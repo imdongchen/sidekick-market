@@ -2,6 +2,7 @@
 
 import { ReviewCarousel } from '@/components/review/carousel'
 import { MonthlyBreakdownSlide } from '@/components/review/monthly-breakdown'
+import { PersonalRecordsSlide } from '@/components/review/personal-records'
 import { SummarySlide } from '@/components/review/summary'
 import { TeamRaceSlide } from '@/components/review/team-race'
 import { getReviewData } from '@/supabase/review'
@@ -74,7 +75,7 @@ function ReviewContent() {
       onNext={() => setCurrentIndex(currentIndex + 1)}
     />,
     <MonthlyBreakdownSlide key="monthly" data={reviewData} />,
-    // <PersonalRecordsSlide key="records" data={reviewData} />,
+    <PersonalRecordsSlide key="records" data={reviewData} />,
     <SummarySlide key="summary" data={reviewData} />,
   ]
 
