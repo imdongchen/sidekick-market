@@ -9,12 +9,14 @@ interface CarouselProps {
   children: React.ReactNode[]
   currentIndex: number
   onIndexChange: (index: number) => void
+  showSelectUserPrompt?: boolean
 }
 
 export function ReviewCarousel({
   children,
   currentIndex,
   onIndexChange,
+  showSelectUserPrompt = false,
 }: CarouselProps) {
   const [touchStart, setTouchStart] = useState<number | null>(null)
   const [touchEnd, setTouchEnd] = useState<number | null>(null)
@@ -33,6 +35,8 @@ export function ReviewCarousel({
 
   const onTouchEnd = () => {
     if (!touchStart || !touchEnd) return
+    // Disable swipe if showing select user prompt
+    if (showSelectUserPrompt && currentIndex === 0) return
 
     const distance = touchStart - touchEnd
     const isLeftSwipe = distance > minSwipeDistance
@@ -50,6 +54,9 @@ export function ReviewCarousel({
     _event: MouseEvent | TouchEvent | PointerEvent,
     info: PanInfo,
   ) => {
+    // Disable drag if showing select user prompt
+    if (showSelectUserPrompt && currentIndex === 0) return
+
     const threshold = 100
     if (info.offset.x > threshold && currentIndex > 0) {
       onIndexChange(currentIndex - 1)
@@ -79,14 +86,19 @@ export function ReviewCarousel({
       if (e.key === 'ArrowLeft' && currentIndex > 0) {
         onIndexChange(currentIndex - 1)
       }
-      if (e.key === 'ArrowRight' && currentIndex < children.length - 1) {
+      // Disable right arrow if showing select user prompt
+      if (
+        e.key === 'ArrowRight' &&
+        currentIndex < children.length - 1 &&
+        !(showSelectUserPrompt && currentIndex === 0)
+      ) {
         onIndexChange(currentIndex + 1)
       }
     }
 
     window.addEventListener('keydown', handleKeyPress)
     return () => window.removeEventListener('keydown', handleKeyPress)
-  }, [currentIndex, children.length, onIndexChange])
+  }, [currentIndex, children.length, onIndexChange, showSelectUserPrompt])
 
   return (
     <div className="relative min-h-screen w-full">
@@ -97,13 +109,21 @@ export function ReviewCarousel({
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -300 }}
           transition={{ duration: 0.3, ease: 'easeInOut' }}
-          drag="x"
+          drag={showSelectUserPrompt && currentIndex === 0 ? false : 'x'}
           dragConstraints={{ left: 0, right: 0 }}
           dragElastic={0.2}
           onDragEnd={handleDragEnd}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
+          onTouchStart={
+            showSelectUserPrompt && currentIndex === 0
+              ? undefined
+              : onTouchStart
+          }
+          onTouchMove={
+            showSelectUserPrompt && currentIndex === 0 ? undefined : onTouchMove
+          }
+          onTouchEnd={
+            showSelectUserPrompt && currentIndex === 0 ? undefined : onTouchEnd
+          }
           className="h-full w-full"
         >
           {children[currentIndex]}
@@ -115,9 +135,20 @@ export function ReviewCarousel({
         {children.map((_, index) => (
           <button
             key={index}
-            onClick={() => onIndexChange(index)}
+            onClick={() => {
+              // Disable navigation to slides beyond first if showing select user prompt
+              if (showSelectUserPrompt && currentIndex === 0 && index > 0) {
+                return
+              }
+              onIndexChange(index)
+            }}
+            disabled={showSelectUserPrompt && currentIndex === 0 && index > 0}
             className={`h-2 rounded-full transition-all ${
               index === currentIndex ? 'w-8 bg-white' : 'w-2 bg-white/50'
+            } ${
+              showSelectUserPrompt && currentIndex === 0 && index > 0
+                ? 'cursor-not-allowed opacity-30'
+                : 'cursor-pointer'
             }`}
             aria-label={`Go to slide ${index + 1}`}
           />
@@ -135,17 +166,18 @@ export function ReviewCarousel({
         </button>
       )}
 
-      {currentIndex < children.length - 1 && (
-        <button
-          onClick={goToNext}
-          className="absolute right-4 top-1/2 z-20 hidden -translate-y-1/2 rounded-full bg-white/80 p-2 backdrop-blur-sm transition-colors hover:bg-white md:flex"
-          aria-label="Next slide"
-        >
-          <ChevronRightIcon className="h-6 w-6 text-gray-950" />
-        </button>
-      )}
+      {currentIndex < children.length - 1 &&
+        !(showSelectUserPrompt && currentIndex === 0) && (
+          <button
+            onClick={goToNext}
+            className="absolute right-4 top-1/2 z-20 hidden -translate-y-1/2 rounded-full bg-white/80 p-2 backdrop-blur-sm transition-colors hover:bg-white md:flex"
+            aria-label="Next slide"
+          >
+            <ChevronRightIcon className="h-6 w-6 text-gray-950" />
+          </button>
+        )}
 
-      {/* Swipe hint on first slide */}
+      {/* Swipe hint or select user prompt on first slide */}
       {currentIndex === 0 && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -153,14 +185,28 @@ export function ReviewCarousel({
           exit={{ opacity: 0 }}
           className="pointer-events-none absolute bottom-12 left-1/2 z-20 -translate-x-1/2 text-sm text-white/70"
         >
-          <motion.div
-            animate={{ x: [0, 10, 0] }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-            className="flex items-center gap-2"
-          >
-            <span>Swipe to explore</span>
-            <ChevronRightIcon className="h-4 w-4" />
-          </motion.div>
+          {showSelectUserPrompt ? (
+            <motion.div
+              animate={{ y: [0, -5, 0] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              className="flex items-center gap-2"
+            >
+              <span>Select a user above to view their review</span>
+            </motion.div>
+          ) : (
+            <motion.div
+              animate={{ x: [0, 10, 0] }}
+              transition={{
+                duration: 1.5,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+              className="flex items-center gap-2"
+            >
+              <span>Swipe to explore</span>
+              <ChevronRightIcon className="h-4 w-4" />
+            </motion.div>
+          )}
         </motion.div>
       )}
     </div>
