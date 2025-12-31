@@ -68,6 +68,12 @@ function ReviewContent() {
     )
   }
 
+  // Check if user is missing or has no swim data
+  const hasUserData =
+    userSlug &&
+    reviewData.swimmer &&
+    (reviewData.swimmer.distance > 0 || reviewData.swimmer.count > 0)
+
   const slides = [
     <TeamRaceSlide
       key="team-race"
@@ -86,6 +92,7 @@ function ReviewContent() {
         children={slides}
         currentIndex={currentIndex}
         onIndexChange={setCurrentIndex}
+        showSelectUserPrompt={!hasUserData}
       />
     </div>
   )
