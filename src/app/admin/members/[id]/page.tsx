@@ -1,6 +1,6 @@
 import { MemberEditForm } from '@/components/admin/member-edit-form'
 import { Link } from '@/components/link'
-import { createAdminClient } from '@/supabase/admin'
+import { createClient } from '@/supabase/server'
 import { requireStaff } from '@/supabase/auth'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
@@ -14,12 +14,12 @@ export default async function MemberEditPage({
 }: {
   params: { id: string }
 }) {
-  const staff = await requireStaff()
+  await requireStaff()
   const id = Number(params.id)
   if (!Number.isFinite(id)) notFound()
 
-  const admin = createAdminClient()
-  const { data: member } = await admin
+  const supabase = createClient()
+  const { data: member } = await supabase
     .from('profile')
     .select('*')
     .eq('id', id)
@@ -27,13 +27,9 @@ export default async function MemberEditPage({
 
   if (!member) notFound()
 
-  if (staff.role === 'coach' && member.teamId !== staff.teamId) {
-    notFound()
-  }
-
   let teamName: string | null = null
   if (member.teamId) {
-    const { data: team } = await admin
+    const { data: team } = await supabase
       .from('team')
       .select('name')
       .eq('id', member.teamId)

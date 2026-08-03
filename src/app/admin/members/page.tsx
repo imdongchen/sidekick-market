@@ -1,6 +1,6 @@
 import { Link } from '@/components/link'
 import { requireStaff } from '@/supabase/auth'
-import { createAdminClient } from '@/supabase/admin'
+import { createClient } from '@/supabase/server'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -14,12 +14,12 @@ export default async function MembersPage({
 }: {
   searchParams: SearchParams
 }) {
-  const staff = await requireStaff()
-  const admin = createAdminClient()
+  await requireStaff()
+  const supabase = createClient()
   const q = searchParams.q?.trim() ?? ''
   const status = searchParams.status?.trim() ?? ''
 
-  let query = admin
+  let query = supabase
     .from('profile')
     .select(
       'id, firstName, lastName, email, birthday, usmsId, role, status, teamId, slug, createdAt',
@@ -28,12 +28,11 @@ export default async function MembersPage({
     .order('firstName', { ascending: true })
     .limit(200)
 
-  if (staff.role === 'coach' && staff.teamId) {
-    query = query.eq('teamId', staff.teamId)
-  }
-
   if (status) {
-    query = query.eq('status', status as 'active' | 'deactivated' | 'pending' | 'invited')
+    query = query.eq(
+      'status',
+      status as 'active' | 'deactivated' | 'pending' | 'invited',
+    )
   }
 
   if (q) {
@@ -53,10 +52,11 @@ export default async function MembersPage({
 
   const { data: teams } =
     teamIds.length > 0
-      ? await admin.from('team').select('id, name').in('id', teamIds)
+      ? await supabase.from('team').select('id, name').in('id', teamIds)
       : { data: [] }
 
   const teamName = new Map((teams ?? []).map((t) => [t.id, t.name]))
+  const showTeam = teamIds.length > 1
 
   return (
     <div>
@@ -66,9 +66,7 @@ export default async function MembersPage({
             Members
           </h1>
           <p className="mt-1 text-sm text-zinc-600">
-            {staff.role === 'coach'
-              ? 'Members on your team.'
-              : 'All profiles across teams.'}
+            Members visible to your account (team-scoped by RLS).
           </p>
         </div>
         <form className="flex flex-wrap gap-2">
@@ -115,9 +113,7 @@ export default async function MembersPage({
                 <th className="px-4 py-3">Birthday</th>
                 <th className="px-4 py-3">Role</th>
                 <th className="px-4 py-3">Status</th>
-                {staff.role === 'admin' && (
-                  <th className="px-4 py-3">Team</th>
-                )}
+                {showTeam && <th className="px-4 py-3">Team</th>}
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -142,7 +138,7 @@ export default async function MembersPage({
                   <td className="whitespace-nowrap px-4 py-3">
                     <StatusBadge status={m.status} />
                   </td>
-                  {staff.role === 'admin' && (
+                  {showTeam && (
                     <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
                       {m.teamId ? teamName.get(m.teamId) ?? m.teamId : '—'}
                     </td>
@@ -160,7 +156,7 @@ export default async function MembersPage({
               {(members ?? []).length === 0 && (
                 <tr>
                   <td
-                    colSpan={staff.role === 'admin' ? 8 : 7}
+                    colSpan={showTeam ? 8 : 7}
                     className="px-4 py-10 text-center text-zinc-500"
                   >
                     No members found.

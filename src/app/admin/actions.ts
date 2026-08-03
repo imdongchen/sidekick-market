@@ -2,7 +2,6 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { createAdminClient } from '@/supabase/admin'
 import { requireStaff } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
 import type { Role, Status } from '@/types/database'
@@ -26,24 +25,10 @@ export type UpdateMemberInput = {
 }
 
 export async function updateMember(input: UpdateMemberInput) {
-  const staff = await requireStaff()
+  await requireStaff()
+  const supabase = createClient()
 
-  const admin = createAdminClient()
-
-  // Coaches can only edit members on their team; admins can edit anyone.
-  if (staff.role === 'coach') {
-    const { data: existing } = await admin
-      .from('profile')
-      .select('teamId')
-      .eq('id', input.id)
-      .single()
-
-    if (!existing || existing.teamId !== staff.teamId) {
-      return { error: 'You can only edit members on your team.' }
-    }
-  }
-
-  const { error } = await admin
+  const { error } = await supabase
     .from('profile')
     .update({
       firstName: input.firstName.trim(),

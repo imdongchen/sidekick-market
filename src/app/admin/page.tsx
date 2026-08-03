@@ -1,6 +1,6 @@
 import { Link } from '@/components/link'
 import { requireStaff } from '@/supabase/auth'
-import { createAdminClient } from '@/supabase/admin'
+import { createClient } from '@/supabase/server'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -9,26 +9,21 @@ export const metadata: Metadata = {
 
 export default async function AdminHomePage() {
   const staff = await requireStaff()
-  const admin = createAdminClient()
-
-  let memberQuery = admin
-    .from('profile')
-    .select('id', { count: 'exact', head: true })
-
-  if (staff.role === 'coach' && staff.teamId) {
-    memberQuery = memberQuery.eq('teamId', staff.teamId)
-  }
+  const supabase = createClient()
 
   const [{ count: memberCount }, { count: emailCount }] = await Promise.all([
-    memberQuery,
-    admin.from('email_tracking').select('id', { count: 'exact', head: true }),
+    supabase.from('profile').select('id', { count: 'exact', head: true }),
+    supabase
+      .from('email_tracking')
+      .select('id', { count: 'exact', head: true }),
   ])
 
   const tools = [
     {
       href: '/admin/members',
       title: 'Member management',
-      description: 'List members and edit name, birthday, USMS, email, role, and status.',
+      description:
+        'List members and edit name, birthday, USMS, email, role, and status.',
       stat: `${memberCount ?? 0} members`,
     },
     {
@@ -46,7 +41,8 @@ export default async function AdminHomePage() {
         Tools
       </h1>
       <p className="mt-1 text-sm text-zinc-600">
-        Signed in as {staff.firstName} ({staff.role}).
+        Signed in as {staff.firstName} ({staff.role}). Access is limited to your
+        team by Supabase RLS.
       </p>
       <ul className="mt-8 grid gap-4 sm:grid-cols-2">
         {tools.map((tool) => (

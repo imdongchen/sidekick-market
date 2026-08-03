@@ -1,5 +1,5 @@
 import { requireStaff } from '@/supabase/auth'
-import { createAdminClient } from '@/supabase/admin'
+import { createClient } from '@/supabase/server'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -14,12 +14,11 @@ export default async function EmailsPage({
   searchParams: SearchParams
 }) {
   await requireStaff()
-  const admin = createAdminClient()
+  const supabase = createClient()
   const q = searchParams.q?.trim() ?? ''
   const event = searchParams.event?.trim() ?? ''
 
-  // Group by Resend emailId — show the latest event per email, prefer "sent"
-  let query = admin
+  let query = supabase
     .from('email_tracking')
     .select('*')
     .order('timestamp', { ascending: false })
@@ -34,7 +33,6 @@ export default async function EmailsPage({
 
   const { data: events, error } = await query
 
-  // Deduplicate to unique emails (by emailId), keeping chronological event trail summary
   const byEmail = new Map<
     string,
     {
@@ -75,9 +73,10 @@ export default async function EmailsPage({
             Emails
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-zinc-600">
-            Past sends are tracked in Supabase <code className="text-xs">email_tracking</code>,
-            populated by Resend webhooks (sent, delivered, opened, clicked, bounced).
-            Resend&apos;s dashboard also retains send history.
+            Past sends are tracked in Supabase{' '}
+            <code className="text-xs">email_tracking</code>, populated by Resend
+            webhooks (sent, delivered, opened, clicked, bounced). Resend&apos;s
+            dashboard also retains send history.
           </p>
         </div>
         <form className="flex flex-wrap gap-2">

@@ -1,4 +1,4 @@
-import { createAdminClient } from '@/supabase/admin'
+import { createClient } from '@/supabase/server'
 import { getSessionUser, isStaffRole } from '@/supabase/auth'
 import { NextResponse } from 'next/server'
 
@@ -8,8 +8,8 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: 'Not signed in.' }, { status: 401 })
   }
 
-  const admin = createAdminClient()
-  const { data: profile } = await admin
+  const supabase = createClient()
+  const { data: profile } = await supabase
     .from('profile')
     .select('role, firstName, lastName')
     .eq('userId', user.id)
