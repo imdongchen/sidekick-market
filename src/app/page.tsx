@@ -50,7 +50,7 @@ function Hero() {
             Sidekick helps a swim team track their workout, stay connected, and
             manage schedules and roasters.
           </p>
-          <div className="mt-12">
+          <div className="mt-12 flex flex-col gap-x-6 gap-y-4 sm:flex-row">
             <Link href="https://apps.apple.com/us/app/sidekick-swim-app-for-teams/id6677036644">
               <img
                 alt="Download on the App Store"
@@ -58,7 +58,25 @@ function Hero() {
                 className="h-14"
               />
             </Link>
+            <Link href="https://github.com/imdongchen/sidekick-market/releases/download/android%401.6.27/sidekick-android.aab">
+              <img
+                alt="Download Android app"
+                src="/download-android.png"
+                className="h-14"
+              />
+            </Link>
           </div>
+          <p className="mt-8">
+            *The Android app is currently in beta testing and not yet publicly
+            available on Google Play. You can download and install it directly
+            from the link above. Not working? Try downloading{' '}
+            <u>
+              <Link href="https://github.com/imdongchen/sidekick-market/releases/download/android%401.6.28/build-1749947550072.apk">
+                this APK
+              </Link>
+            </u>{' '}
+            instead.
+          </p>
           <p className="mt-8">
             Contact <u>admin@sidekickswim.com</u> for help.
           </p>
@@ -68,13 +86,7 @@ function Hero() {
   )
 }
 
-function PreviewSection({
-  src,
-  alt,
-}: {
-  src: string
-  alt: string
-}) {
+function PreviewSection({ src, alt }: { src: string; alt: string }) {
   return (
     <section className="overflow-hidden bg-[#e8f1fa] py-8 sm:py-12">
       <Container>
