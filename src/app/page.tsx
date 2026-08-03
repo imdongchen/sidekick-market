@@ -31,7 +31,7 @@ function Hero() {
   return (
     <div className="relative">
       <Gradient className="absolute inset-0 bottom-0 ring-1 ring-inset ring-black/5" />
-      <Container className="relative pb-10">
+      <Container className="relative">
         <Navbar
           banner={
             <Link
@@ -82,14 +82,7 @@ function Hero() {
           </p>
         </div>
       </Container>
-    </div>
-  )
-}
-
-function PreviewRow() {
-  return (
-    <section className="bg-[#e8f1fa] py-8 sm:py-12">
-      <div className="flex gap-4 overflow-x-auto px-6 pb-2 lg:px-8">
+      <div className="relative mt-12 flex gap-4 overflow-x-auto px-6 pb-10 lg:px-8">
         {previewSections.map((section) => (
           <img
             key={section.id}
@@ -101,17 +94,10 @@ function PreviewRow() {
           />
         ))}
       </div>
-    </section>
+    </div>
   )
 }
 
 export default function Home() {
-  return (
-    <div>
-      <Hero />
-      <main>
-        <PreviewRow />
-      </main>
-    </div>
-  )
+  return <Hero />
 }
