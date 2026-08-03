@@ -86,18 +86,21 @@ function Hero() {
   )
 }
 
-function PreviewSection({ src, alt }: { src: string; alt: string }) {
+function PreviewRow() {
   return (
-    <section className="overflow-hidden bg-[#e8f1fa] py-8 sm:py-12">
-      <Container>
-        <img
-          src={src}
-          alt={alt}
-          width={1242}
-          height={2688}
-          className="mx-auto w-full max-w-md sm:max-w-xl"
-        />
-      </Container>
+    <section className="bg-[#e8f1fa] py-8 sm:py-12">
+      <div className="flex gap-4 overflow-x-auto px-6 pb-2 lg:px-8">
+        {previewSections.map((section) => (
+          <img
+            key={section.id}
+            src={section.src}
+            alt={section.alt}
+            width={1242}
+            height={2688}
+            className="h-[28rem] w-auto shrink-0 sm:h-[36rem] lg:h-[42rem]"
+          />
+        ))}
+      </div>
     </section>
   )
 }
@@ -107,13 +110,7 @@ export default function Home() {
     <div>
       <Hero />
       <main>
-        {previewSections.map((section) => (
-          <PreviewSection
-            key={section.id}
-            src={section.src}
-            alt={section.alt}
-          />
-        ))}
+        <PreviewRow />
       </main>
     </div>
   )
