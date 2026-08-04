@@ -10,3 +10,97 @@
     transform: translateX(var(--move-x-to));
   }
 }
+
+@keyframes hero-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(1.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-phone-in {
+  from {
+    opacity: 0;
+    transform: translateY(2.5rem) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes hero-shimmer {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate(4%, -3%) scale(1.08);
+    opacity: 1;
+  }
+}
+
+@keyframes hero-shimmer-delayed {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translate(-5%, 4%) scale(1.1);
+    opacity: 0.9;
+  }
+}
+
+.hero-fade-in {
+  opacity: 0;
+  animation: hero-fade-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.hero-phone {
+  opacity: 0;
+  animation: hero-phone-in 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.hero-delay-1 {
+  animation-delay: 0.08s;
+}
+.hero-delay-2 {
+  animation-delay: 0.18s;
+}
+.hero-delay-3 {
+  animation-delay: 0.28s;
+}
+.hero-delay-4 {
+  animation-delay: 0.38s;
+}
+.hero-delay-5 {
+  animation-delay: 0.45s;
+}
+.hero-delay-6 {
+  animation-delay: 0.9s;
+}
+
+.hero-shimmer {
+  animation: hero-shimmer 14s ease-in-out infinite;
+}
+
+.hero-shimmer-delayed {
+  animation: hero-shimmer-delayed 18s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-fade-in,
+  .hero-phone,
+  .hero-shimmer,
+  .hero-shimmer-delayed {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
