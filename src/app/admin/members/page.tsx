@@ -117,6 +117,9 @@ export default async function MembersPage({
               <tr>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3">USMS</th>
+                <th className="px-4 py-3">Birthday</th>
+                <th className="px-4 py-3">Role</th>
                 <th className="px-4 py-3">Status</th>
                 {showTeam && <th className="px-4 py-3">Team</th>}
                 <th className="px-4 py-3 text-right">Check-ins</th>
@@ -138,6 +141,15 @@ export default async function MembersPage({
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
                       {m.email}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
+                      {m.usmsId || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
+                      {m.birthday || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
+                      {m.role || '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <StatusBadge status={m.status} />
@@ -165,7 +177,7 @@ export default async function MembersPage({
               {(members ?? []).length === 0 && (
                 <tr>
                   <td
-                    colSpan={showTeam ? 9 : 8}
+                    colSpan={showTeam ? 12 : 11}
                     className="px-4 py-10 text-center text-zinc-500"
                   >
                     No members found.
