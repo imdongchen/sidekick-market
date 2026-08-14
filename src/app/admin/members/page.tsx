@@ -1,4 +1,9 @@
+import { MemberEngagementStats } from '@/components/admin/member-engagement-stats'
 import { Link } from '@/components/link'
+import {
+  emptyEngagement,
+  getEngagementByUserIds,
+} from '@/lib/engagement'
 import { requireStaff } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
 import type { Metadata } from 'next'
@@ -22,7 +27,7 @@ export default async function MembersPage({
   let query = supabase
     .from('profile')
     .select(
-      'id, firstName, lastName, email, birthday, usmsId, role, status, teamId, slug, createdAt',
+      'id, firstName, lastName, email, birthday, usmsId, role, status, teamId, slug, createdAt, userId',
     )
     .order('lastName', { ascending: true })
     .order('firstName', { ascending: true })
@@ -50,10 +55,12 @@ export default async function MembersPage({
     ...new Set((members ?? []).map((m) => m.teamId).filter(Boolean)),
   ] as number[]
 
-  const { data: teams } =
+  const [{ data: teams }, engagementByUser] = await Promise.all([
     teamIds.length > 0
-      ? await supabase.from('team').select('id, name').in('id', teamIds)
-      : { data: [] }
+      ? supabase.from('team').select('id, name').in('id', teamIds)
+      : Promise.resolve({ data: [] as { id: number; name: string }[] }),
+    getEngagementByUserIds((members ?? []).map((m) => m.userId)),
+  ])
 
   const teamName = new Map((teams ?? []).map((t) => [t.id, t.name]))
   const showTeam = teamIds.length > 1
@@ -66,7 +73,8 @@ export default async function MembersPage({
             Members
           </h1>
           <p className="mt-1 text-sm text-zinc-600">
-            Members visible to your account (team-scoped by RLS).
+            Members visible to your account (team-scoped by RLS), with check-in
+            and weekly usage metrics.
           </p>
         </div>
         <form className="flex flex-wrap gap-2">
@@ -109,54 +117,55 @@ export default async function MembersPage({
               <tr>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">USMS</th>
-                <th className="px-4 py-3">Birthday</th>
-                <th className="px-4 py-3">Role</th>
                 <th className="px-4 py-3">Status</th>
                 {showTeam && <th className="px-4 py-3">Team</th>}
+                <th className="px-4 py-3 text-right">Check-ins</th>
+                <th className="px-4 py-3 text-right">Monthly</th>
+                <th className="px-4 py-3 text-right">Sessions</th>
+                <th className="px-4 py-3 text-right">Hours</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {(members ?? []).map((m) => (
-                <tr key={m.id} className="hover:bg-zinc-50/80">
-                  <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-950">
-                    {m.firstName} {m.lastName}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                    {m.email}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                    {m.usmsId || '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                    {m.birthday || '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                    {m.role || '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <StatusBadge status={m.status} />
-                  </td>
-                  {showTeam && (
-                    <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                      {m.teamId ? teamName.get(m.teamId) ?? m.teamId : '—'}
+              {(members ?? []).map((m) => {
+                const engagement = m.userId
+                  ? (engagementByUser.get(m.userId) ?? emptyEngagement())
+                  : emptyEngagement()
+                return (
+                  <tr key={m.id} className="hover:bg-zinc-50/80">
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-950">
+                      {m.firstName} {m.lastName}
                     </td>
-                  )}
-                  <td className="whitespace-nowrap px-4 py-3 text-right">
-                    <Link
-                      href={`/admin/members/${m.id}`}
-                      className="font-medium text-zinc-950 hover:underline"
-                    >
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+                    <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
+                      {m.email}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <StatusBadge status={m.status} />
+                    </td>
+                    {showTeam && (
+                      <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
+                        {m.teamId ? teamName.get(m.teamId) ?? m.teamId : '—'}
+                      </td>
+                    )}
+                    <MemberEngagementStats
+                      engagement={engagement}
+                      compact
+                    />
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <Link
+                        href={`/admin/members/${m.id}`}
+                        className="font-medium text-zinc-950 hover:underline"
+                      >
+                        Edit
+                      </Link>
+                    </td>
+                  </tr>
+                )
+              })}
               {(members ?? []).length === 0 && (
                 <tr>
                   <td
-                    colSpan={showTeam ? 8 : 7}
+                    colSpan={showTeam ? 9 : 8}
                     className="px-4 py-10 text-center text-zinc-500"
                   >
                     No members found.
