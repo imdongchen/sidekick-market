@@ -2,8 +2,8 @@
  * PostHog Query API helpers for member usage metrics.
  *
  * Only import this module from server code that stays private
- * (e.g. `/api/admin/engagement`). `POSTHOG_API_KEY` must be set in the host
- * environment or `.env.local` — never commit it.
+ * (e.g. `/api/admin/engagement`). `POSTHOG_PERSONAL_API_KEY` must be set in
+ * the host environment or `.env.local` — never commit it.
  *
  * Public project settings (host / project id) may live in `.env`.
  */
@@ -26,9 +26,7 @@ export function getPostHogConfig(): {
   projectId: string
   host: string
 } | null {
-  const apiKey =
-    process.env.POSTHOG_API_KEY?.trim() ||
-    process.env.POSTHOG_PERSONAL_API_KEY?.trim()
+  const apiKey = process.env.POSTHOG_PERSONAL_API_KEY?.trim()
   const projectId = process.env.POSTHOG_PROJECT_ID?.trim()
   if (!apiKey || !projectId) return null
 
@@ -65,7 +63,7 @@ export async function getWeeklyUsageByDistinctIds(
   // Project API keys (phc_) cannot call the Query API.
   if (config.apiKey.startsWith('phc_')) {
     console.warn(
-      'PostHog weekly usage skipped: set POSTHOG_API_KEY to a personal key (phx_…)',
+      'PostHog weekly usage skipped: set POSTHOG_PERSONAL_API_KEY to a personal key (phx_…)',
     )
     return null
   }

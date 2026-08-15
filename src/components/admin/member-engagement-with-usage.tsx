@@ -7,8 +7,9 @@ import { useEffect, useState, type ReactNode } from 'react'
 type Usage = { weeklySessions: number; weeklyHours: number }
 
 /**
- * Loads weekly PostHog usage from /api/admin/engagement (where POSTHOG_API_KEY
- * is read server-side) and merges it into check-in engagement from the server.
+ * Loads weekly PostHog usage from /api/admin/engagement (where
+ * POSTHOG_PERSONAL_API_KEY is read server-side) and merges it into check-in
+ * engagement from the server.
  */
 export function MemberEngagementWithUsage({
   userId,

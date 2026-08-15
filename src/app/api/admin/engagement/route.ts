@@ -11,8 +11,8 @@ type Body = {
 
 /**
  * Returns weekly PostHog usage for the given auth user IDs.
- * POSTHOG_API_KEY is read only here (and in @/lib/posthog) — never commit it;
- * set it in the host environment or `.env.local`.
+ * POSTHOG_PERSONAL_API_KEY is read only here (and in @/lib/posthog) — never
+ * commit it; set it in the host environment or `.env.local`.
  */
 export async function POST(request: Request) {
   const user = await getSessionUser()
