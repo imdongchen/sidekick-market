@@ -3,8 +3,8 @@
 import { MemberEngagementStats } from '@/components/admin/member-engagement-stats'
 import { MemberWeeklyUsageProvider } from '@/components/admin/member-engagement-with-usage'
 import { Link } from '@/components/link'
-import type { MemberEngagement } from '@/lib/engagement'
-import { emptyEngagement } from '@/lib/engagement'
+import type { MemberEngagement } from '@/lib/engagement-shared'
+import { emptyEngagement } from '@/lib/engagement-shared'
 
 export type MemberRow = {
   id: number

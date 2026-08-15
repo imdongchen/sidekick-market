@@ -1,7 +1,7 @@
 'use client'
 
 import { MemberEngagementStats } from '@/components/admin/member-engagement-stats'
-import type { MemberEngagement } from '@/lib/engagement'
+import type { MemberEngagement } from '@/lib/engagement-shared'
 import { useEffect, useState, type ReactNode } from 'react'
 
 type Usage = { weeklySessions: number; weeklyHours: number }

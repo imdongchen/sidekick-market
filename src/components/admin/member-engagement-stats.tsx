@@ -1,4 +1,4 @@
-import type { MemberEngagement } from '@/lib/engagement'
+import type { MemberEngagement } from '@/lib/engagement-shared'
 
 function formatMetric(value: number | null | undefined, digits = 0): string {
   if (value === null || value === undefined) return '—'

@@ -1,16 +1,14 @@
+import {
+  emptyEngagement,
+  type MemberEngagement,
+} from '@/lib/engagement-shared'
 import { createClient } from '@/supabase/server'
 
-export type MemberEngagement = {
-  checkIns: number
-  monthlyCheckIns: number
-  weeklySessions: number | null
-  weeklyHours: number | null
-}
-
-export type WeeklyUsage = {
-  weeklySessions: number
-  weeklyHours: number
-}
+export type { MemberEngagement, WeeklyUsage } from '@/lib/engagement-shared'
+export {
+  emptyEngagement,
+  engagementMapToRecord,
+} from '@/lib/engagement-shared'
 
 function startOfMonthISO(): string {
   const now = new Date()
@@ -32,12 +30,7 @@ export async function getCheckInEngagementByUserIds(
   if (ids.length === 0) return map
 
   for (const id of ids) {
-    map.set(id, {
-      checkIns: 0,
-      monthlyCheckIns: 0,
-      weeklySessions: null,
-      weeklyHours: null,
-    })
+    map.set(id, emptyEngagement())
   }
 
   const supabase = createClient()
@@ -78,18 +71,3 @@ export async function getCheckInEngagementByUserIds(
 
 /** @deprecated Use getCheckInEngagementByUserIds */
 export const getEngagementByUserIds = getCheckInEngagementByUserIds
-
-export function emptyEngagement(): MemberEngagement {
-  return {
-    checkIns: 0,
-    monthlyCheckIns: 0,
-    weeklySessions: null,
-    weeklyHours: null,
-  }
-}
-
-export function engagementMapToRecord(
-  map: Map<string, MemberEngagement>,
-): Record<string, MemberEngagement> {
-  return Object.fromEntries(map.entries())
-}
