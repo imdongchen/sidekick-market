@@ -30,7 +30,7 @@ export default async function AdminHomePage() {
       href: '/admin/emails',
       title: 'Email management',
       description:
-        'Browse emails sent via Resend. Delivery events are stored in email_tracking from Resend webhooks.',
+        'Preview campaigns, choose recipients, send or schedule via Resend, and review delivery events.',
       stat: `${emailCount ?? 0} events`,
     },
   ]
