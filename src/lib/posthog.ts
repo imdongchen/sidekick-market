@@ -1,11 +1,9 @@
 /**
  * PostHog Query API helpers for member usage metrics.
  *
- * Project config (public, from Sidekick iOS) lives in `.env`:
- *   POSTHOG_API_KEY / POSTHOG_HOST / POSTHOG_PROJECT_ID
- *
- * Query API auth: prefer POSTHOG_PERSONAL_API_KEY (phx_… with Query read).
- * Falls back to POSTHOG_API_KEY when that is a personal key.
+ * `.env` holds:
+ *   POSTHOG_API_KEY — personal key (phx_…) with Query read
+ *   POSTHOG_PROJECT_ID / POSTHOG_HOST — from Sidekick iOS init
  */
 
 export type PostHogWeeklyUsage = {
@@ -26,10 +24,9 @@ export function getPostHogConfig(): {
   projectId: string
   host: string
 } | null {
-  // Personal keys (phx_) can query; project keys (phc_) are capture-only.
-  const personalKey = process.env.POSTHOG_PERSONAL_API_KEY?.trim()
-  const projectKey = process.env.POSTHOG_API_KEY?.trim()
-  const apiKey = personalKey || projectKey
+  const apiKey =
+    process.env.POSTHOG_API_KEY?.trim() ||
+    process.env.POSTHOG_PERSONAL_API_KEY?.trim()
   const projectId = process.env.POSTHOG_PROJECT_ID?.trim()
   if (!apiKey || !projectId) return null
 
@@ -64,9 +61,9 @@ export async function getWeeklyUsageByDistinctIds(
   if (!config) return null
 
   // Project API keys (phc_) cannot call the Query API.
-  if (config.apiKey.startsWith('phc_') && !process.env.POSTHOG_PERSONAL_API_KEY) {
+  if (config.apiKey.startsWith('phc_')) {
     console.warn(
-      'PostHog weekly usage skipped: POSTHOG_PERSONAL_API_KEY required for Query API',
+      'PostHog weekly usage skipped: set POSTHOG_API_KEY to a personal key (phx_…)',
     )
     return null
   }
