@@ -62,9 +62,10 @@ export function MemberEngagementStats({
       </dl>
       {engagement.weeklySessions === null && (
         <p className="mt-2 text-xs text-zinc-500">
-          Weekly usage requires PostHog API credentials (
-          <code className="text-zinc-600">POSTHOG_PERSONAL_API_KEY</code>,{' '}
-          <code className="text-zinc-600">POSTHOG_PROJECT_ID</code>).
+          Weekly usage requires a PostHog personal API key with Query read (
+          <code className="text-zinc-600">POSTHOG_PERSONAL_API_KEY</code>). The
+          project key in <code className="text-zinc-600">.env</code> is
+          capture-only.
         </p>
       )}
     </div>

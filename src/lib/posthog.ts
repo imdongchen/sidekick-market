@@ -1,11 +1,11 @@
 /**
  * PostHog Query API helpers for member usage metrics.
  *
- * Config is expected from the Sidekick iOS app PostHog setup plus a personal
- * API key with "Query Read" permission:
- *   POSTHOG_PERSONAL_API_KEY
- *   POSTHOG_PROJECT_ID
- *   POSTHOG_HOST (optional) — ingest host (us.i.posthog.com) or app host (us.posthog.com)
+ * Project config (public, from Sidekick iOS) lives in `.env`:
+ *   POSTHOG_API_KEY / POSTHOG_HOST / POSTHOG_PROJECT_ID
+ *
+ * Query API auth: prefer POSTHOG_PERSONAL_API_KEY (phx_… with Query read).
+ * Falls back to POSTHOG_API_KEY when that is a personal key.
  */
 
 export type PostHogWeeklyUsage = {
@@ -26,7 +26,10 @@ export function getPostHogConfig(): {
   projectId: string
   host: string
 } | null {
-  const apiKey = process.env.POSTHOG_PERSONAL_API_KEY?.trim()
+  // Personal keys (phx_) can query; project keys (phc_) are capture-only.
+  const personalKey = process.env.POSTHOG_PERSONAL_API_KEY?.trim()
+  const projectKey = process.env.POSTHOG_API_KEY?.trim()
+  const apiKey = personalKey || projectKey
   const projectId = process.env.POSTHOG_PROJECT_ID?.trim()
   if (!apiKey || !projectId) return null
 
@@ -48,35 +51,48 @@ export function isPostHogConfigured(): boolean {
 
 /**
  * Weekly usage sessions + hours for many distinct_ids (typically profile.userId).
- * Returns an empty map when PostHog is not configured or the query fails.
+ * Returns null when PostHog is not configured or the query fails; otherwise a map
+ * (missing ids imply 0 sessions in the window).
  */
 export async function getWeeklyUsageByDistinctIds(
   distinctIds: string[],
-): Promise<Map<string, PostHogWeeklyUsage>> {
-  const result = new Map<string, PostHogWeeklyUsage>()
+): Promise<Map<string, PostHogWeeklyUsage> | null> {
   const unique = [...new Set(distinctIds.filter(Boolean))]
-  if (unique.length === 0) return result
+  if (unique.length === 0) return new Map()
 
   const config = getPostHogConfig()
-  if (!config) return result
+  if (!config) return null
+
+  // Project API keys (phc_) cannot call the Query API.
+  if (config.apiKey.startsWith('phc_') && !process.env.POSTHOG_PERSONAL_API_KEY) {
+    console.warn(
+      'PostHog weekly usage skipped: POSTHOG_PERSONAL_API_KEY required for Query API',
+    )
+    return null
+  }
+
+  const result = new Map<string, PostHogWeeklyUsage>()
+  let anySuccess = false
 
   // Chunk to keep HogQL IN lists reasonable.
   const chunkSize = 100
   for (let i = 0; i < unique.length; i += chunkSize) {
     const chunk = unique.slice(i, i + chunkSize)
     const chunkMap = await queryWeeklyUsageChunk(config, chunk)
+    if (chunkMap === null) continue
+    anySuccess = true
     for (const [id, usage] of chunkMap) {
       result.set(id, usage)
     }
   }
 
-  return result
+  return anySuccess ? result : null
 }
 
 async function queryWeeklyUsageChunk(
   config: { apiKey: string; projectId: string; host: string },
   distinctIds: string[],
-): Promise<Map<string, PostHogWeeklyUsage>> {
+): Promise<Map<string, PostHogWeeklyUsage> | null> {
   const map = new Map<string, PostHogWeeklyUsage>()
   const escaped = distinctIds.map((id) => `'${id.replace(/'/g, "\\'")}'`)
 
@@ -113,7 +129,7 @@ async function queryWeeklyUsageChunk(
     if (!res.ok) {
       const text = await res.text().catch(() => '')
       console.error('PostHog weekly usage query failed', res.status, text)
-      return map
+      return null
     }
 
     const data = (await res.json()) as {
@@ -130,6 +146,7 @@ async function queryWeeklyUsageChunk(
     }
   } catch (err) {
     console.error('PostHog weekly usage query error', err)
+    return null
   }
 
   return map

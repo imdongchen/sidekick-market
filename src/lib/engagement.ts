@@ -74,18 +74,12 @@ export async function getEngagementByUserIds(
 
   if (isPostHogConfigured()) {
     const usage = await getWeeklyUsageByDistinctIds(ids)
-    for (const [uid, stats] of usage) {
-      const entry = map.get(uid)
-      if (!entry) continue
-      entry.weeklySessions = stats.sessions
-      entry.weeklyHours = stats.hours
-    }
-    // Distinct ids with no sessions in the window still count as 0.
-    for (const id of ids) {
-      const entry = map.get(id)!
-      if (entry.weeklySessions === null) {
-        entry.weeklySessions = 0
-        entry.weeklyHours = 0
+    if (usage) {
+      for (const id of ids) {
+        const entry = map.get(id)!
+        const stats = usage.get(id)
+        entry.weeklySessions = stats?.sessions ?? 0
+        entry.weeklyHours = stats?.hours ?? 0
       }
     }
   }
