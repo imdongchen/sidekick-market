@@ -1,14 +1,15 @@
 import { createClient } from '@/supabase/server'
-import {
-  getWeeklyUsageByDistinctIds,
-  isPostHogConfigured,
-} from '@/lib/posthog'
 
 export type MemberEngagement = {
   checkIns: number
   monthlyCheckIns: number
   weeklySessions: number | null
   weeklyHours: number | null
+}
+
+export type WeeklyUsage = {
+  weeklySessions: number
+  weeklyHours: number
 }
 
 function startOfMonthISO(): string {
@@ -19,10 +20,11 @@ function startOfMonthISO(): string {
 }
 
 /**
- * Aggregate check-ins (workout_log) and PostHog weekly usage for members.
+ * Aggregate check-ins from workout_log.
  * Keys are profile.userId (auth UUID). Members without userId are omitted.
+ * Weekly PostHog usage is loaded separately via /api/admin/engagement.
  */
-export async function getEngagementByUserIds(
+export async function getCheckInEngagementByUserIds(
   userIds: Array<string | null | undefined>,
 ): Promise<Map<string, MemberEngagement>> {
   const map = new Map<string, MemberEngagement>()
@@ -41,7 +43,6 @@ export async function getEngagementByUserIds(
   const supabase = createClient()
   const monthStart = startOfMonthISO()
 
-  // Paginate — PostgREST default max is often 1000 rows.
   const pageSize = 1000
   let from = 0
   for (;;) {
@@ -72,20 +73,11 @@ export async function getEngagementByUserIds(
     from += pageSize
   }
 
-  if (isPostHogConfigured()) {
-    const usage = await getWeeklyUsageByDistinctIds(ids)
-    if (usage) {
-      for (const id of ids) {
-        const entry = map.get(id)!
-        const stats = usage.get(id)
-        entry.weeklySessions = stats?.sessions ?? 0
-        entry.weeklyHours = stats?.hours ?? 0
-      }
-    }
-  }
-
   return map
 }
+
+/** @deprecated Use getCheckInEngagementByUserIds */
+export const getEngagementByUserIds = getCheckInEngagementByUserIds
 
 export function emptyEngagement(): MemberEngagement {
   return {
@@ -94,4 +86,10 @@ export function emptyEngagement(): MemberEngagement {
     weeklySessions: null,
     weeklyHours: null,
   }
+}
+
+export function engagementMapToRecord(
+  map: Map<string, MemberEngagement>,
+): Record<string, MemberEngagement> {
+  return Object.fromEntries(map.entries())
 }

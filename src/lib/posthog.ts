@@ -1,9 +1,11 @@
 /**
  * PostHog Query API helpers for member usage metrics.
  *
- * `.env` holds:
- *   POSTHOG_API_KEY — personal key (phx_…) with Query read
- *   POSTHOG_PROJECT_ID / POSTHOG_HOST — from Sidekick iOS init
+ * Only import this module from server code that stays private
+ * (e.g. `/api/admin/engagement`). `POSTHOG_API_KEY` must be set in the host
+ * environment or `.env.local` — never commit it.
+ *
+ * Public project settings (host / project id) may live in `.env`.
  */
 
 export type PostHogWeeklyUsage = {
