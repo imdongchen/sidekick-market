@@ -85,9 +85,10 @@ export function MemberWeeklyUsageProvider({
 }) {
   const [usageByUser, setUsageByUser] = useState<Map<string, Usage>>(new Map())
   const [ready, setReady] = useState(false)
+  const userIdsKey = userIds.join(',')
 
   useEffect(() => {
-    const ids = [...new Set(userIds.filter(Boolean))]
+    const ids = userIdsKey ? [...new Set(userIdsKey.split(',').filter(Boolean))] : []
     if (ids.length === 0) {
       setReady(true)
       return
@@ -128,7 +129,7 @@ export function MemberWeeklyUsageProvider({
     return () => {
       cancelled = true
     }
-  }, [userIds.join(',')])
+  }, [userIdsKey])
 
   return <>{children(usageByUser, ready)}</>
 }
