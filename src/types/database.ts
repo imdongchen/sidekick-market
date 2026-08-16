@@ -48,6 +48,23 @@ export type EmailTracking = {
   createdAt: string
 }
 
+/** Practice check-in / swim log entry (Sidekick iOS feed). */
+export type WorkoutLog = {
+  id: number
+  teamId: number | null
+  workoutId: number | null
+  createdBy: string | null
+  poolId: number | null
+  date: string | null
+  startTime: string | null
+  endTime: string | null
+  note: string | null
+  photos: Json | null
+  count: number | null
+  createdAt: string
+  updatedAt: string
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -69,6 +86,12 @@ export type Database = {
         Insert: Partial<EmailTracking> &
           Pick<EmailTracking, 'emailId' | 'recipientEmail' | 'eventType'>
         Update: Partial<EmailTracking>
+        Relationships: []
+      }
+      workout_log: {
+        Row: WorkoutLog
+        Insert: Partial<WorkoutLog>
+        Update: Partial<WorkoutLog>
         Relationships: []
       }
     }

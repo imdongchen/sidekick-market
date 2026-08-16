@@ -1,5 +1,10 @@
 import { MemberEditForm } from '@/components/admin/member-edit-form'
+import { MemberEngagementWithUsage } from '@/components/admin/member-engagement-with-usage'
 import { Link } from '@/components/link'
+import {
+  emptyEngagement,
+  getCheckInEngagementByUserIds,
+} from '@/lib/engagement'
 import { createClient } from '@/supabase/server'
 import { requireStaff } from '@/supabase/auth'
 import type { Metadata } from 'next'
@@ -37,6 +42,11 @@ export default async function MemberEditPage({
     teamName = team?.name ?? null
   }
 
+  const engagementByUser = await getCheckInEngagementByUserIds([member.userId])
+  const engagement = member.userId
+    ? (engagementByUser.get(member.userId) ?? emptyEngagement())
+    : emptyEngagement()
+
   return (
     <div>
       <p className="text-sm text-zinc-500">
@@ -53,6 +63,11 @@ export default async function MemberEditPage({
         {teamName ? `Team: ${teamName}` : 'No team'}
         {member.userId ? '' : ' · No auth account linked'}
       </p>
+      <MemberEngagementWithUsage
+        userId={member.userId}
+        checkIns={engagement.checkIns}
+        monthlyCheckIns={engagement.monthlyCheckIns}
+      />
       <MemberEditForm member={member} />
     </div>
   )

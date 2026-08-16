@@ -23,7 +23,7 @@ export default async function AdminHomePage() {
       href: '/admin/members',
       title: 'Member management',
       description:
-        'List members and edit name, birthday, USMS, email, role, and status.',
+        'List members, view engagement (check-ins and weekly usage), and edit profile fields.',
       stat: `${memberCount ?? 0} members`,
     },
     {

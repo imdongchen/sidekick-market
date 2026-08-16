@@ -89,11 +89,12 @@ function ReviewContent() {
     <div>
       <div className="fixed inset-0 bg-gray-950" />
       <ReviewCarousel
-        children={slides}
         currentIndex={currentIndex}
         onIndexChange={setCurrentIndex}
         showSelectUserPrompt={!hasUserData}
-      />
+      >
+        {slides}
+      </ReviewCarousel>
     </div>
   )
 }
