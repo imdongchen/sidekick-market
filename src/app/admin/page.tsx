@@ -30,7 +30,7 @@ export default async function AdminHomePage() {
       href: '/admin/emails',
       title: 'Email management',
       description:
-        'Preview campaigns, choose recipients, send or schedule via Resend, and review delivery events.',
+        'Draft new emails with Resend templates, send campaigns, and review delivery events.',
       stat: `${emailCount ?? 0} events`,
     },
   ]
