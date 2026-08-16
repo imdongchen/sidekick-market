@@ -1,5 +1,11 @@
 import { EmailComposer } from '@/components/admin/email-composer'
+import { EmailDraftComposer } from '@/components/admin/email-draft-composer'
+import { EmailsTabs } from '@/components/admin/emails-tabs'
 import { loadReintroduceHtml } from '@/lib/emails/reintroduce-sidekick.server'
+import {
+  listResendTemplates,
+  type ResendTemplateSummary,
+} from '@/app/admin/emails/template-actions'
 import { requireStaff } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
 import type { Metadata } from 'next'
@@ -8,7 +14,7 @@ export const metadata: Metadata = {
   title: 'Emails',
 }
 
-type SearchParams = { q?: string; event?: string }
+type SearchParams = { q?: string; event?: string; tab?: string }
 
 export default async function EmailsPage({
   searchParams,
@@ -19,36 +25,50 @@ export default async function EmailsPage({
   const supabase = createClient()
   const q = searchParams.q?.trim() ?? ''
   const event = searchParams.event?.trim() ?? ''
+  const tab = searchParams.tab === 'draft' ? 'draft' : 'campaign'
 
-  const [templateHtml, membersResult, eventsResult] = await Promise.all([
-    loadReintroduceHtml(),
-    supabase
-      .from('profile')
-      .select('id, firstName, lastName, email, role, status')
-      .neq('status', 'deactivated')
-      .order('lastName', { ascending: true })
-      .order('firstName', { ascending: true })
-      .limit(1000),
-    (() => {
-      let query = supabase
-        .from('email_tracking')
-        .select('*')
-        .order('timestamp', { ascending: false })
-        .limit(300)
-      if (q) {
-        query = query.ilike('recipientEmail', `%${q}%`)
-      }
-      if (event) {
-        query = query.eq('eventType', event)
-      }
-      return query
-    })(),
-  ])
+  const resendConfigured = !!process.env.RESEND_API_KEY
+
+  const [templateHtml, membersResult, eventsResult, templatesResult] =
+    await Promise.all([
+      loadReintroduceHtml(),
+      supabase
+        .from('profile')
+        .select('id, firstName, lastName, email, role, status')
+        .neq('status', 'deactivated')
+        .order('lastName', { ascending: true })
+        .order('firstName', { ascending: true })
+        .limit(1000),
+      (() => {
+        let query = supabase
+          .from('email_tracking')
+          .select('*')
+          .order('timestamp', { ascending: false })
+          .limit(300)
+        if (q) {
+          query = query.ilike('recipientEmail', `%${q}%`)
+        }
+        if (event) {
+          query = query.eq('eventType', event)
+        }
+        return query
+      })(),
+      resendConfigured
+        ? listResendTemplates()
+        : Promise.resolve({ templates: [] as ResendTemplateSummary[] }),
+    ])
 
   const members = (membersResult.data ?? []).filter((m) => !!m.email)
   const events = eventsResult.data
   const eventsError = eventsResult.error
-  const resendConfigured = !!process.env.RESEND_API_KEY
+  const templates =
+    templatesResult && 'templates' in templatesResult
+      ? templatesResult.templates
+      : []
+  const templatesError =
+    templatesResult && 'error' in templatesResult
+      ? templatesResult.error
+      : undefined
 
   const byEmail = new Map<
     string,
@@ -89,18 +109,28 @@ export default async function EmailsPage({
           Emails
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-zinc-600">
-          Preview the re-introduction campaign, choose recipients, send now or
-          schedule via Resend. Delivery events are stored in{' '}
-          <code className="text-xs">email_tracking</code> (local queue + Resend
-          webhooks).
+          Draft new emails with the Sidekick template on Resend, send the
+          re-introduction campaign, or review delivery events in{' '}
+          <code className="text-xs">email_tracking</code>.
         </p>
       </div>
 
-      <EmailComposer
-        templateHtml={templateHtml}
-        members={members}
-        resendConfigured={resendConfigured}
-      />
+      <EmailsTabs active={tab} />
+
+      {tab === 'draft' ? (
+        <EmailDraftComposer
+          members={members}
+          templates={templates}
+          templatesError={templatesError}
+          resendConfigured={resendConfigured}
+        />
+      ) : (
+        <EmailComposer
+          templateHtml={templateHtml}
+          members={members}
+          resendConfigured={resendConfigured}
+        />
+      )}
 
       <section>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -113,6 +143,7 @@ export default async function EmailsPage({
             </p>
           </div>
           <form className="flex flex-wrap gap-2">
+            <input type="hidden" name="tab" value={tab} />
             <input
               name="q"
               defaultValue={q}
