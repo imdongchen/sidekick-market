@@ -1,20 +1,17 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
-import { loadReintroduceHtml } from '@/lib/emails/reintroduce-sidekick.server'
+import { isAdminDemoMode } from '@/lib/admin-demo-server'
 import {
   personalizeReintroduceEmail,
   REINTRODUCE_CAMPAIGN,
   REINTRODUCE_SUBJECT,
 } from '@/lib/emails/reintroduce-sidekick'
-import {
-  getResendClient,
-  getResendFrom,
-  getResendReplyTo,
-} from '@/lib/resend'
+import { loadReintroduceHtml } from '@/lib/emails/reintroduce-sidekick.server'
+import { getResendClient, getResendFrom, getResendReplyTo } from '@/lib/resend'
 import { requireStaff } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
 import type { Profile } from '@/types/database'
+import { revalidatePath } from 'next/cache'
 
 export type EmailAudience = 'all_members' | 'all_coaches' | 'individuals'
 
@@ -66,7 +63,9 @@ async function resolveRecipients(
   if (audience === 'all_coaches') {
     query = query.eq('role', 'coach')
   } else if (audience === 'individuals') {
-    const ids = [...new Set((memberIds ?? []).filter((id) => Number.isFinite(id)))]
+    const ids = [
+      ...new Set((memberIds ?? []).filter((id) => Number.isFinite(id))),
+    ]
     if (ids.length === 0) {
       return { error: 'Select at least one individual recipient.' }
     }
@@ -100,6 +99,22 @@ export async function sendReintroduceCampaign(
     return { error: 'Enter check-in and miles totals before sending.' }
   }
 
+  if (isAdminDemoMode()) {
+    const resolved = await resolveRecipients(input.audience, input.memberIds)
+    if ('error' in resolved) return { error: resolved.error }
+    const scheduledAt =
+      input.mode === 'schedule' ? input.scheduledAt : undefined
+    return {
+      success: true,
+      queued: resolved.recipients.length,
+      scheduled: input.mode === 'schedule',
+      scheduledAt,
+      emailIds: resolved.recipients.map(
+        (recipient) => `demo-${recipient.id}-${Date.now()}`,
+      ),
+    }
+  }
+
   if (!process.env.RESEND_API_KEY) {
     return {
       error:
@@ -117,7 +132,9 @@ export async function sendReintroduceCampaign(
       return { error: 'Invalid schedule time.' }
     }
     if (when.getTime() <= Date.now() + 60_000) {
-      return { error: 'Schedule time must be at least one minute in the future.' }
+      return {
+        error: 'Schedule time must be at least one minute in the future.',
+      }
     }
     scheduledAt = when.toISOString()
   }

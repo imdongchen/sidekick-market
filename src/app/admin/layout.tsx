@@ -1,5 +1,6 @@
-import { Link } from '@/components/link'
 import { signOut } from '@/app/admin/actions'
+import { Link } from '@/components/link'
+import { isAdminDemoMode } from '@/lib/admin-demo-server'
 import { requireStaff } from '@/supabase/auth'
 import { clsx } from 'clsx'
 import type { ReactNode } from 'react'
@@ -16,13 +17,23 @@ export default async function AdminLayout({
   children: ReactNode
 }) {
   const staff = await requireStaff()
+  const demo = isAdminDemoMode()
 
   return (
     <div className="min-h-dvh bg-zinc-50">
+      {demo && (
+        <div className="bg-amber-100 px-4 py-2 text-center text-sm text-amber-950">
+          Preview demo mode — fixture data only. Member edits and email sends
+          are no-ops.
+        </div>
+      )}
       <header className="border-b border-zinc-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-8">
-            <Link href="/admin" className="text-lg font-semibold tracking-tight">
+            <Link
+              href="/admin"
+              className="text-lg font-semibold tracking-tight"
+            >
               Sidekick Admin
             </Link>
             <nav className="hidden items-center gap-1 sm:flex">

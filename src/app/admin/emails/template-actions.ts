@@ -1,20 +1,18 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { DEMO_RESEND_TEMPLATES } from '@/lib/admin-demo-data'
+import { isAdminDemoMode } from '@/lib/admin-demo-server'
 import {
   buildSidekickEmailHtml,
   slugifyAlias,
   USER_FIRST_NAME_VAR,
   type SidekickEmailContent,
 } from '@/lib/emails/sidekick-layout'
-import {
-  getResendClient,
-  getResendFrom,
-  getResendReplyTo,
-} from '@/lib/resend'
+import { getResendClient, getResendFrom, getResendReplyTo } from '@/lib/resend'
 import { requireStaff } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
 import type { Profile } from '@/types/database'
+import { revalidatePath } from 'next/cache'
 import type { EmailAudience } from './actions'
 
 export type ResendTemplateSummary = {
@@ -155,6 +153,9 @@ export async function listResendTemplates(): Promise<
   { templates: ResendTemplateSummary[] } | { error: string }
 > {
   await requireStaff()
+  if (isAdminDemoMode()) {
+    return { templates: DEMO_RESEND_TEMPLATES }
+  }
   const keyError = requireResendKey()
   if (keyError) return keyError
 
@@ -203,11 +204,24 @@ export async function saveEmailDraft(
   input: DraftEmailInput,
 ): Promise<DraftEmailResult> {
   await requireStaff()
-  const keyError = requireResendKey()
-  if (keyError) return keyError
 
   const validationError = validateDraftContent(input)
   if (validationError) return { error: validationError }
+
+  if (isAdminDemoMode()) {
+    const alias =
+      slugifyAlias(input.alias?.trim() || input.name) ||
+      `sidekick-${Date.now().toString(36)}`
+    return {
+      success: true,
+      templateId: input.templateId?.trim() || 'tmpl_demo_saved',
+      alias,
+      published: !!input.publish,
+    }
+  }
+
+  const keyError = requireResendKey()
+  if (keyError) return keyError
 
   const name = input.name.trim()
   const subject = input.subject.trim()
@@ -294,6 +308,11 @@ export async function publishEmailTemplate(
   templateId: string,
 ): Promise<{ success: true } | { error: string }> {
   await requireStaff()
+  if (isAdminDemoMode()) {
+    const id = templateId?.trim()
+    if (!id) return { error: 'Missing template id.' }
+    return { success: true }
+  }
   const keyError = requireResendKey()
   if (keyError) return keyError
 
@@ -320,13 +339,30 @@ export async function sendTemplateCampaign(
   input: SendTemplateCampaignInput,
 ): Promise<SendTemplateCampaignResult> {
   await requireStaff()
-  const keyError = requireResendKey()
-  if (keyError) return keyError
 
   const templateId = input.templateId?.trim()
   if (!templateId) {
     return { error: 'Choose a Resend template to send.' }
   }
+
+  if (isAdminDemoMode()) {
+    const resolved = await resolveRecipients(input.audience, input.memberIds)
+    if ('error' in resolved) return { error: resolved.error }
+    const scheduledAt =
+      input.mode === 'schedule' ? input.scheduledAt : undefined
+    return {
+      success: true,
+      queued: resolved.recipients.length,
+      scheduled: input.mode === 'schedule',
+      scheduledAt,
+      emailIds: resolved.recipients.map(
+        (recipient) => `demo-${recipient.id}-${Date.now()}`,
+      ),
+    }
+  }
+
+  const keyError = requireResendKey()
+  if (keyError) return keyError
 
   let scheduledAt: string | undefined
   if (input.mode === 'schedule') {
@@ -338,7 +374,9 @@ export async function sendTemplateCampaign(
       return { error: 'Invalid schedule time.' }
     }
     if (when.getTime() <= Date.now() + 60_000) {
-      return { error: 'Schedule time must be at least one minute in the future.' }
+      return {
+        error: 'Schedule time must be at least one minute in the future.',
+      }
     }
     scheduledAt = when.toISOString()
   }
