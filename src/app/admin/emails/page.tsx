@@ -1,11 +1,13 @@
-import { EmailComposer } from '@/components/admin/email-composer'
-import { EmailDraftComposer } from '@/components/admin/email-draft-composer'
-import { EmailsTabs } from '@/components/admin/emails-tabs'
-import { loadReintroduceHtml } from '@/lib/emails/reintroduce-sidekick.server'
 import {
   listResendTemplates,
   type ResendTemplateSummary,
 } from '@/app/admin/emails/template-actions'
+import { EmailComposer } from '@/components/admin/email-composer'
+import { EmailDraftComposer } from '@/components/admin/email-draft-composer'
+import { EmailsTabs } from '@/components/admin/emails-tabs'
+import { DEMO_RESEND_TEMPLATES } from '@/lib/admin-demo-data'
+import { isAdminDemoMode } from '@/lib/admin-demo-server'
+import { loadReintroduceHtml } from '@/lib/emails/reintroduce-sidekick.server'
 import { requireStaff } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
 import type { Metadata } from 'next'
@@ -27,7 +29,8 @@ export default async function EmailsPage({
   const event = searchParams.event?.trim() ?? ''
   const tab = searchParams.tab === 'draft' ? 'draft' : 'campaign'
 
-  const resendConfigured = !!process.env.RESEND_API_KEY
+  const demo = isAdminDemoMode()
+  const resendConfigured = demo || !!process.env.RESEND_API_KEY
 
   const [templateHtml, membersResult, eventsResult, templatesResult] =
     await Promise.all([
@@ -53,9 +56,11 @@ export default async function EmailsPage({
         }
         return query
       })(),
-      resendConfigured
-        ? listResendTemplates()
-        : Promise.resolve({ templates: [] as ResendTemplateSummary[] }),
+      demo
+        ? Promise.resolve({ templates: DEMO_RESEND_TEMPLATES })
+        : resendConfigured
+          ? listResendTemplates()
+          : Promise.resolve({ templates: [] as ResendTemplateSummary[] }),
     ])
 
   const members = (membersResult.data ?? []).filter((m) => !!m.email)

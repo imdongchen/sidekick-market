@@ -1,6 +1,8 @@
+import { DEMO_WEEKLY_USAGE } from '@/lib/admin-demo-data'
+import { isAdminDemoMode } from '@/lib/admin-demo-server'
+import { getWeeklyUsageByDistinctIds } from '@/lib/posthog'
 import { getSessionUser, isStaffRole } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
-import { getWeeklyUsageByDistinctIds } from '@/lib/posthog'
 import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
@@ -48,6 +50,17 @@ export async function POST(request: Request) {
 
   if (userIds.length === 0) {
     return NextResponse.json({ usage: {} })
+  }
+
+  if (isAdminDemoMode()) {
+    const usage: Record<
+      string,
+      { weeklySessions: number; weeklyHours: number }
+    > = {}
+    for (const id of userIds) {
+      usage[id] = DEMO_WEEKLY_USAGE[id] ?? { weeklySessions: 0, weeklyHours: 0 }
+    }
+    return NextResponse.json({ usage })
   }
 
   const usageMap = await getWeeklyUsageByDistinctIds(userIds)

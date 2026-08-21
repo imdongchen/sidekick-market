@@ -1,8 +1,16 @@
+import { isAdminDemoMode } from '@/lib/admin-demo-server'
+import { createDemoClient } from '@/supabase/demo-client'
+import type { Database } from '@/types/database'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import type { Database } from '@/types/database'
 
 export function createClient() {
+  if (isAdminDemoMode()) {
+    return createDemoClient() as unknown as ReturnType<
+      typeof createServerClient<Database>
+    >
+  }
+
   const cookieStore = cookies()
 
   return createServerClient<Database>(
