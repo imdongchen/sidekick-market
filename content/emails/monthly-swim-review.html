@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Your team’s {{MONTH}} swim review</title>
+  </head>
+  <body
+    style="
+      margin: 0;
+      padding: 0;
+      background: #e8f1fa;
+      font-family:
+        -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial,
+        sans-serif;
+      color: #18181b;
+    "
+  >
+    <!--
+      Subject: Your team’s {{MONTH}} swim review
+      Replace {{CHECK_INS}}, {{MILES}}, and {{PERSONAL_NUDGE}} before send.
+    -->
+    <table
+      role="presentation"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      style="background: #e8f1fa; padding: 32px 16px"
+    >
+      <tr>
+        <td align="center">
+          <table
+            role="presentation"
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            style="
+              max-width: 560px;
+              background: #ffffff;
+              border-radius: 16px;
+              overflow: hidden;
+            "
+          >
+            <tr>
+              <td
+                style="
+                  padding: 28px 28px 8px;
+                  background: linear-gradient(180deg, #dbeafe 0%, #ffffff 100%);
+                "
+              >
+                <p
+                  style="
+                    margin: 0 0 8px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    letter-spacing: 0.04em;
+                    text-transform: uppercase;
+                    color: #0369a1;
+                  "
+                >
+                  Sidekick · Monthly review
+                </p>
+                <h1
+                  style="
+                    margin: 0;
+                    font-size: 28px;
+                    line-height: 1.2;
+                    font-weight: 700;
+                    color: #09090b;
+                  "
+                >
+                  Your team’s {{MONTH}} in the water
+                </h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 16px 28px 8px; font-size: 16px; line-height: 1.55">
+                <p style="margin: 0 0 16px">Hi {{firstName}},</p>
+                <p style="margin: 0 0 16px">
+                  Here’s a quick look at how the team swam in
+                  <strong>{{MONTH}}</strong>.
+                </p>
+                <p style="margin: 0 0 16px">
+                  This month your team logged
+                  <strong>{{CHECK_INS}} check-ins</strong> and swam
+                  <strong>{{MILES}} miles</strong>. Every lap adds up —
+                  nice work keeping the lanes busy.
+                </p>
+                {{PERSONAL_NUDGE}}
+                <p style="margin: 0 0 8px">
+                  Open Sidekick to check your swims, see how you stacked up
+                  with the team, and keep your streak going.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 16px 28px 8px">
+                <h2
+                  style="
+                    margin: 0 0 12px;
+                    font-size: 18px;
+                    font-weight: 700;
+                    color: #09090b;
+                  "
+                >
+                  Check your swims
+                </h2>
+                <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.55">
+                  Jump into the app to review this month’s check-ins and
+                  distance.
+                </p>
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="padding: 0 0 12px">
+                      <a
+                        href="https://apps.apple.com/us/app/sidekick-swim-app-for-teams/id6677036644"
+                        style="
+                          display: inline-block;
+                          background: #09090b;
+                          color: #ffffff;
+                          text-decoration: none;
+                          font-size: 15px;
+                          font-weight: 600;
+                          padding: 12px 20px;
+                          border-radius: 10px;
+                        "
+                        >Open on the App Store</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 0 0 12px">
+                      <a
+                        href="https://sidekickswim.com/open"
+                        style="
+                          display: inline-block;
+                          background: #0369a1;
+                          color: #ffffff;
+                          text-decoration: none;
+                          font-size: 15px;
+                          font-weight: 600;
+                          padding: 12px 20px;
+                          border-radius: 10px;
+                        "
+                        >Open Sidekick</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <a
+                        href="https://github.com/imdongchen/sidekick-market/releases/download/android%401.6.27/sidekick-android.aab"
+                        style="
+                          display: inline-block;
+                          color: #0369a1;
+                          text-decoration: underline;
+                          font-size: 14px;
+                          font-weight: 600;
+                        "
+                        >Android (beta)</a
+                      >
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td
+                style="
+                  padding: 24px 28px 32px;
+                  font-size: 16px;
+                  line-height: 1.55;
+                "
+              >
+                <p style="margin: 0 0 16px">
+                  Questions or feedback? Reply to this email or write us at
+                  <a href="mailto:admin@sidekickswim.com" style="color: #0369a1"
+                    >admin@sidekickswim.com</a
+                  >.
+                </p>
+                <p style="margin: 0">
+                  See you at the pool,<br />
+                  The Sidekick team<br />
+                  <a href="https://sidekickswim.com" style="color: #0369a1"
+                    >sidekickswim.com</a
+                  >
+                </p>
+              </td>
+            </tr>
+          </table>
+          <p
+            style="
+              margin: 20px 0 0;
+              font-size: 12px;
+              line-height: 1.4;
+              color: #71717a;
+              text-align: center;
+            "
+          >
+            You’re receiving this because you have a Sidekick account.
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

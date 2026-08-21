@@ -5,12 +5,13 @@ import {
   resolveRecipients,
 } from '@/app/admin/emails/recipients'
 import { isAdminDemoMode } from '@/lib/admin-demo-server'
+import { getCheckInEngagementByUserIds } from '@/lib/engagement'
 import {
-  personalizeReintroduceEmail,
-  REINTRODUCE_CAMPAIGN,
-  REINTRODUCE_SUBJECT,
-} from '@/lib/emails/reintroduce-sidekick'
-import { loadReintroduceHtml } from '@/lib/emails/reintroduce-sidekick.server'
+  MONTHLY_REVIEW_CAMPAIGN,
+  monthlyReviewSubject,
+  personalizeMonthlyReviewEmail,
+} from '@/lib/emails/monthly-swim-review'
+import { loadMonthlyReviewHtml } from '@/lib/emails/monthly-swim-review.server'
 import { getResendClient, getResendFrom, getResendReplyTo } from '@/lib/resend'
 import { requireStaff } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
@@ -18,9 +19,10 @@ import { revalidatePath } from 'next/cache'
 
 export type { EmailAudience }
 
-export type SendReintroduceInput = {
+export type SendMonthlyReviewInput = {
   audience: EmailAudience
   memberIds?: number[]
+  month: string
   checkIns: string
   miles: string
   mode: 'now' | 'schedule'
@@ -28,7 +30,7 @@ export type SendReintroduceInput = {
   scheduledAt?: string
 }
 
-export type SendReintroduceResult =
+export type SendMonthlyReviewResult =
   | {
       success: true
       queued: number
@@ -40,15 +42,18 @@ export type SendReintroduceResult =
 
 const BATCH_SIZE = 100
 
-export async function sendReintroduceCampaign(
-  input: SendReintroduceInput,
-): Promise<SendReintroduceResult> {
+export async function sendMonthlyReviewCampaign(
+  input: SendMonthlyReviewInput,
+): Promise<SendMonthlyReviewResult> {
   await requireStaff()
 
+  const month = input.month?.trim()
   const checkIns = input.checkIns?.trim()
   const miles = input.miles?.trim()
-  if (!checkIns || !miles) {
-    return { error: 'Enter check-in and miles totals before sending.' }
+  if (!month || !checkIns || !miles) {
+    return {
+      error: 'Enter the month label, check-in total, and miles before sending.',
+    }
   }
 
   if (isAdminDemoMode()) {
@@ -62,7 +67,7 @@ export async function sendReintroduceCampaign(
       scheduled: input.mode === 'schedule',
       scheduledAt,
       emailIds: resolved.recipients.map(
-        (recipient) => `demo-${recipient.id}-${Date.now()}`,
+        (recipient) => `demo-monthly-${recipient.id}-${Date.now()}`,
       ),
     }
   }
@@ -96,7 +101,12 @@ export async function sendReintroduceCampaign(
     return { error: resolved.error }
   }
 
-  const htmlTemplate = await loadReintroduceHtml()
+  const engagement = await getCheckInEngagementByUserIds(
+    resolved.recipients.map((r) => r.userId),
+  )
+
+  const htmlTemplate = await loadMonthlyReviewHtml()
+  const subject = monthlyReviewSubject(month)
   const resend = getResendClient()
   const from = getResendFrom()
   const replyTo = getResendReplyTo()
@@ -106,20 +116,25 @@ export async function sendReintroduceCampaign(
     for (let i = 0; i < resolved.recipients.length; i += BATCH_SIZE) {
       const chunk = resolved.recipients.slice(i, i + BATCH_SIZE)
       const payload = chunk.map((recipient) => {
-        const html = personalizeReintroduceEmail(htmlTemplate, {
+        const monthlyCheckIns = recipient.userId
+          ? (engagement.get(recipient.userId)?.monthlyCheckIns ?? 0)
+          : 0
+        const html = personalizeMonthlyReviewEmail(htmlTemplate, {
           firstName: recipient.firstName || 'there',
+          month,
           checkIns,
           miles,
+          hasNoCheckIns: monthlyCheckIns === 0,
         })
         return {
           from,
           to: [recipient.email.trim().toLowerCase()],
           replyTo,
-          subject: REINTRODUCE_SUBJECT,
+          subject,
           html,
           ...(scheduledAt ? { scheduledAt } : {}),
           tags: [
-            { name: 'campaign', value: REINTRODUCE_CAMPAIGN },
+            { name: 'campaign', value: MONTHLY_REVIEW_CAMPAIGN },
             { name: 'audience', value: input.audience },
           ],
         }
@@ -140,23 +155,29 @@ export async function sendReintroduceCampaign(
         .filter((id): id is string => !!id)
       emailIds.push(...ids)
 
-      // Best-effort local tracking so the admin table updates before webhooks.
       const supabase = createClient()
       const now = new Date().toISOString()
-      const rows = chunk.map((recipient, index) => ({
-        emailId: ids[index] ?? `pending-${recipient.id}-${Date.now()}`,
-        recipientEmail: recipient.email.trim().toLowerCase(),
-        eventType: scheduledAt ? 'email.scheduled' : 'email.sent',
-        timestamp: scheduledAt ?? now,
-        userId: recipient.userId,
-        year: null,
-        metadata: {
-          campaign: REINTRODUCE_CAMPAIGN,
-          audience: input.audience,
-          scheduledAt: scheduledAt ?? null,
-          subject: REINTRODUCE_SUBJECT,
-        },
-      }))
+      const rows = chunk.map((recipient, index) => {
+        const monthlyCheckIns = recipient.userId
+          ? (engagement.get(recipient.userId)?.monthlyCheckIns ?? 0)
+          : 0
+        return {
+          emailId: ids[index] ?? `pending-${recipient.id}-${Date.now()}`,
+          recipientEmail: recipient.email.trim().toLowerCase(),
+          eventType: scheduledAt ? 'email.scheduled' : 'email.sent',
+          timestamp: scheduledAt ?? now,
+          userId: recipient.userId,
+          year: null,
+          metadata: {
+            campaign: MONTHLY_REVIEW_CAMPAIGN,
+            audience: input.audience,
+            scheduledAt: scheduledAt ?? null,
+            subject,
+            month,
+            hasNoCheckIns: monthlyCheckIns === 0,
+          },
+        }
+      })
       await supabase.from('email_tracking').insert(rows)
     }
   } catch (err) {

@@ -5,8 +5,10 @@ import {
 import { EmailComposer } from '@/components/admin/email-composer'
 import { EmailDraftComposer } from '@/components/admin/email-draft-composer'
 import { EmailsTabs } from '@/components/admin/emails-tabs'
+import { MonthlyReviewComposer } from '@/components/admin/monthly-review-composer'
 import { DEMO_RESEND_TEMPLATES } from '@/lib/admin-demo-data'
 import { isAdminDemoMode } from '@/lib/admin-demo-server'
+import { loadMonthlyReviewHtml } from '@/lib/emails/monthly-swim-review.server'
 import { loadReintroduceHtml } from '@/lib/emails/reintroduce-sidekick.server'
 import { requireStaff } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
@@ -27,41 +29,52 @@ export default async function EmailsPage({
   const supabase = createClient()
   const q = searchParams.q?.trim() ?? ''
   const event = searchParams.event?.trim() ?? ''
-  const tab = searchParams.tab === 'draft' ? 'draft' : 'campaign'
+  const tab =
+    searchParams.tab === 'draft'
+      ? 'draft'
+      : searchParams.tab === 'monthly'
+        ? 'monthly'
+        : 'campaign'
 
   const demo = isAdminDemoMode()
   const resendConfigured = demo || !!process.env.RESEND_API_KEY
 
-  const [templateHtml, membersResult, eventsResult, templatesResult] =
-    await Promise.all([
-      loadReintroduceHtml(),
-      supabase
-        .from('profile')
-        .select('id, firstName, lastName, email, role, status')
-        .neq('status', 'deactivated')
-        .order('lastName', { ascending: true })
-        .order('firstName', { ascending: true })
-        .limit(1000),
-      (() => {
-        let query = supabase
-          .from('email_tracking')
-          .select('*')
-          .order('timestamp', { ascending: false })
-          .limit(300)
-        if (q) {
-          query = query.ilike('recipientEmail', `%${q}%`)
-        }
-        if (event) {
-          query = query.eq('eventType', event)
-        }
-        return query
-      })(),
-      demo
-        ? Promise.resolve({ templates: DEMO_RESEND_TEMPLATES })
-        : resendConfigured
-          ? listResendTemplates()
-          : Promise.resolve({ templates: [] as ResendTemplateSummary[] }),
-    ])
+  const [
+    templateHtml,
+    monthlyTemplateHtml,
+    membersResult,
+    eventsResult,
+    templatesResult,
+  ] = await Promise.all([
+    loadReintroduceHtml(),
+    loadMonthlyReviewHtml(),
+    supabase
+      .from('profile')
+      .select('id, firstName, lastName, email, role, status')
+      .neq('status', 'deactivated')
+      .order('lastName', { ascending: true })
+      .order('firstName', { ascending: true })
+      .limit(1000),
+    (() => {
+      let query = supabase
+        .from('email_tracking')
+        .select('*')
+        .order('timestamp', { ascending: false })
+        .limit(300)
+      if (q) {
+        query = query.ilike('recipientEmail', `%${q}%`)
+      }
+      if (event) {
+        query = query.eq('eventType', event)
+      }
+      return query
+    })(),
+    demo
+      ? Promise.resolve({ templates: DEMO_RESEND_TEMPLATES })
+      : resendConfigured
+        ? listResendTemplates()
+        : Promise.resolve({ templates: [] as ResendTemplateSummary[] }),
+  ])
 
   const members = (membersResult.data ?? []).filter((m) => !!m.email)
   const events = eventsResult.data
@@ -115,8 +128,8 @@ export default async function EmailsPage({
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-zinc-600">
           Draft new emails with the Sidekick template on Resend, send the
-          re-introduction campaign, or review delivery events in{' '}
-          <code className="text-xs">email_tracking</code>.
+          monthly swim review or re-introduction campaign, or review delivery
+          events in <code className="text-xs">email_tracking</code>.
         </p>
       </div>
 
@@ -127,6 +140,12 @@ export default async function EmailsPage({
           members={members}
           templates={templates}
           templatesError={templatesError}
+          resendConfigured={resendConfigured}
+        />
+      ) : tab === 'monthly' ? (
+        <MonthlyReviewComposer
+          templateHtml={monthlyTemplateHtml}
+          members={members}
           resendConfigured={resendConfigured}
         />
       ) : (

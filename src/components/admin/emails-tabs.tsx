@@ -1,6 +1,6 @@
 import { Link } from '@/components/link'
 
-type Tab = 'campaign' | 'draft'
+type Tab = 'campaign' | 'monthly' | 'draft'
 
 export function EmailsTabs({ active }: { active: Tab }) {
   const tabs: { id: Tab; label: string; href: string }[] = [
@@ -8,6 +8,11 @@ export function EmailsTabs({ active }: { active: Tab }) {
       id: 'campaign',
       label: 'Re-introduce campaign',
       href: '/admin/emails',
+    },
+    {
+      id: 'monthly',
+      label: 'Monthly review',
+      href: '/admin/emails?tab=monthly',
     },
     {
       id: 'draft',
