@@ -48,6 +48,21 @@ export type EmailTracking = {
   createdAt: string
 }
 
+/** One row per campaign + period to prevent duplicate bulk sends. */
+export type EmailCampaignSend = {
+  id: number
+  campaign: string
+  period: string
+  source: string
+  status: 'pending' | 'sent' | 'failed'
+  queuedCount: number
+  sentAt: string | null
+  error: string | null
+  metadata: Json | null
+  createdAt: string
+  updatedAt: string
+}
+
 /** Practice check-in / swim log entry (Sidekick iOS feed). */
 export type WorkoutLog = {
   id: number
@@ -97,6 +112,13 @@ export type Database = {
         Insert: Partial<EmailTracking> &
           Pick<EmailTracking, 'emailId' | 'recipientEmail' | 'eventType'>
         Update: Partial<EmailTracking>
+        Relationships: []
+      }
+      email_campaign_send: {
+        Row: EmailCampaignSend
+        Insert: Partial<EmailCampaignSend> &
+          Pick<EmailCampaignSend, 'campaign' | 'period' | 'source'>
+        Update: Partial<EmailCampaignSend>
         Relationships: []
       }
       workout_log: {

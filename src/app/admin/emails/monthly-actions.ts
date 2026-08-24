@@ -15,6 +15,7 @@ import {
 } from '@/lib/monthly-swim-stats'
 import { requireStaff } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
+import { createServiceClient } from '@/supabase/service'
 import { revalidatePath } from 'next/cache'
 
 export type { EmailAudience }
@@ -104,12 +105,23 @@ export async function sendMonthlyReviewCampaign(
     }
   }
 
-  const result = await dispatchMonthlyReviewCampaign(supabase, {
+  const dispatchClient = process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? createServiceClient()
+    : supabase
+
+  const result = await dispatchMonthlyReviewCampaign(dispatchClient, {
     ...input,
     source: 'admin',
+    skipIfAlreadySent: false,
   })
 
   if ('error' in result) return { error: result.error }
+
+  if (result.skipped) {
+    return {
+      error: result.reason ?? 'This monthly review was already sent.',
+    }
+  }
 
   revalidatePath('/admin/emails')
   revalidatePath('/admin')

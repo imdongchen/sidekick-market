@@ -16,6 +16,7 @@ const tables: Record<string, Row[]> = {
   profile: DEMO_PROFILES as unknown as Row[],
   team: DEMO_TEAMS as unknown as Row[],
   email_tracking: DEMO_EMAIL_TRACKING as unknown as Row[],
+  email_campaign_send: [],
   workout_log: DEMO_WORKOUT_LOGS as unknown as Row[],
 }
 
@@ -169,10 +170,33 @@ class DemoQuery {
 
   private execute() {
     if (this._insertRows) {
+      const store = tables[this.table] ?? (tables[this.table] = [])
+      const withIds = this._insertRows.map((row, index) => {
+        if (row.id != null) return { ...row }
+        const nextId =
+          store.reduce(
+            (max, item) => Math.max(max, Number(item.id) || 0),
+            0,
+          ) +
+          index +
+          1
+        return { ...row, id: nextId }
+      })
+      store.push(...withIds.map((row) => ({ ...row })))
+      const projected = withIds.map((row) => project(row, this.columns))
+      if (this.wantMaybeSingle) {
+        return {
+          data: projected[0] ?? null,
+          error: null,
+          count: projected.length,
+          status: 201,
+          statusText: 'Created',
+        }
+      }
       return {
-        data: this._insertRows,
+        data: projected,
         error: null,
-        count: this._insertRows.length,
+        count: withIds.length,
         status: 201,
         statusText: 'Created',
       }
@@ -184,10 +208,31 @@ class DemoQuery {
     }
 
     if (this._updateValues) {
+      const store = tables[this.table] ?? []
+      let matched = 0
+      for (let i = 0; i < store.length; i++) {
+        const row = store[i]
+        if (this.filters.every((filter) => filter(row))) {
+          store[i] = { ...row, ...this._updateValues }
+          matched += 1
+        }
+      }
+      const data = store
+        .filter((row) => this.filters.every((filter) => filter(row)))
+        .map((row) => project(row, this.columns))
+      if (this.wantMaybeSingle) {
+        return {
+          data: data[0] ?? null,
+          error: null,
+          count: data.length,
+          status: 200,
+          statusText: 'OK',
+        }
+      }
       return {
-        data: rows.map((row) => ({ ...row, ...this._updateValues })),
+        data,
         error: null,
-        count: rows.length,
+        count: matched,
         status: 200,
         statusText: 'OK',
       }

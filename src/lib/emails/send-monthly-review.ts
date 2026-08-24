@@ -3,6 +3,11 @@ import {
   resolveRecipients,
 } from '@/app/admin/emails/recipients'
 import {
+  claimCampaignSend,
+  markCampaignSendFailed,
+  markCampaignSendSent,
+} from '@/lib/emails/campaign-send-record'
+import {
   MONTHLY_REVIEW_CAMPAIGN,
   monthlyReviewSubject,
   personalizeMonthlyReviewEmail,
@@ -27,9 +32,12 @@ export type DispatchMonthlyReviewInput = {
   month: string
   mode: 'now' | 'schedule'
   scheduledAt?: string
-  /** When true, skip if this campaign+month already has tracking rows. */
+  /**
+   * When true (default for cron), skip if email_campaign_send already has a
+   * successful row for this campaign+month.
+   */
   skipIfAlreadySent?: boolean
-  /** Extra metadata merged into email_tracking rows. */
+  /** Extra metadata merged into email_tracking / campaign send rows. */
   source?: 'admin' | 'cron'
 }
 
@@ -49,31 +57,6 @@ const BATCH_SIZE = 100
 
 type DbClient = SupabaseClient<Database>
 
-async function alreadySentForMonth(
-  supabase: DbClient,
-  isoMonth: string,
-): Promise<boolean> {
-  const { data, error } = await supabase
-    .from('email_tracking')
-    .select('id, metadata')
-    .order('timestamp', { ascending: false })
-    .limit(300)
-
-  if (error) {
-    console.error('monthly review idempotency check failed', error.message)
-    return false
-  }
-
-  return (data ?? []).some((row) => {
-    const meta = row.metadata
-    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return false
-    const record = meta as Record<string, unknown>
-    return (
-      record.campaign === MONTHLY_REVIEW_CAMPAIGN && record.month === isoMonth
-    )
-  })
-}
-
 export async function dispatchMonthlyReviewCampaign(
   supabase: DbClient,
   input: DispatchMonthlyReviewInput,
@@ -84,20 +67,8 @@ export async function dispatchMonthlyReviewCampaign(
   }
 
   const monthName = formatReviewMonthName(parsed.isoMonth)
-
-  if (input.skipIfAlreadySent) {
-    const already = await alreadySentForMonth(supabase, parsed.isoMonth)
-    if (already) {
-      return {
-        success: true,
-        queued: 0,
-        scheduled: false,
-        emailIds: [],
-        skipped: true,
-        reason: `Monthly review for ${parsed.isoMonth} was already queued.`,
-      }
-    }
-  }
+  const source = input.source ?? 'admin'
+  const skipIfAlreadySent = input.skipIfAlreadySent ?? source === 'cron'
 
   if (!process.env.RESEND_API_KEY) {
     return {
@@ -123,12 +94,61 @@ export async function dispatchMonthlyReviewCampaign(
     scheduledAt = when.toISOString()
   }
 
+  const claim = await claimCampaignSend(supabase, {
+    campaign: MONTHLY_REVIEW_CAMPAIGN,
+    period: parsed.isoMonth,
+    source,
+    metadata: {
+      audience: input.audience,
+      monthName,
+    },
+  })
+
+  if (claim.status === 'error') {
+    return { error: `Could not record campaign send: ${claim.error}` }
+  }
+
+  if (claim.status === 'already_sent') {
+    if (skipIfAlreadySent) {
+      return {
+        success: true,
+        queued: 0,
+        scheduled: false,
+        emailIds: [],
+        skipped: true,
+        reason: `Monthly review for ${parsed.isoMonth} was already sent.`,
+      }
+    }
+    return {
+      error: `Monthly review for ${parsed.isoMonth} was already sent. Duplicate sends are blocked.`,
+    }
+  }
+
+  if (claim.status === 'in_progress') {
+    if (skipIfAlreadySent) {
+      return {
+        success: true,
+        queued: 0,
+        scheduled: false,
+        emailIds: [],
+        skipped: true,
+        reason: `Monthly review for ${parsed.isoMonth} is already in progress.`,
+      }
+    }
+    return {
+      error: `Monthly review for ${parsed.isoMonth} is already in progress.`,
+    }
+  }
+
+  const claimId = claim.id
+
   const resolved = await resolveRecipients(
     input.audience,
     input.memberIds,
     supabase,
   )
   if ('error' in resolved) {
+    await markCampaignSendFailed(supabase, claimId, resolved.error)
     return { error: resolved.error }
   }
 
@@ -147,7 +167,6 @@ export async function dispatchMonthlyReviewCampaign(
   const from = getResendFrom()
   const replyTo = getResendReplyTo()
   const emailIds: string[] = []
-  const source = input.source ?? 'admin'
 
   try {
     for (let i = 0; i < resolved.recipients.length; i += BATCH_SIZE) {
@@ -184,12 +203,12 @@ export async function dispatchMonthlyReviewCampaign(
 
       const { data, error } = await resend.batch.send(payload)
       if (error) {
-        return {
-          error:
-            emailIds.length > 0
-              ? `Partially sent (${emailIds.length} queued), then failed: ${error.message}`
-              : error.message,
-        }
+        const message =
+          emailIds.length > 0
+            ? `Partially sent (${emailIds.length} queued), then failed: ${error.message}`
+            : error.message
+        await markCampaignSendFailed(supabase, claimId, message)
+        return { error: message }
       }
 
       const ids = (data?.data ?? [])
@@ -221,23 +240,31 @@ export async function dispatchMonthlyReviewCampaign(
             userCheckIns,
             hasNoCheckIns: userCheckIns === 0,
             source,
+            campaignSendId: claimId,
           },
         }
       })
       await supabase.from('email_tracking').insert(rows)
     }
   } catch (err) {
-    return {
-      error:
-        err instanceof Error
-          ? err.message
-          : 'Failed to send emails via Resend.',
-    }
+    const message =
+      err instanceof Error ? err.message : 'Failed to send emails via Resend.'
+    await markCampaignSendFailed(supabase, claimId, message)
+    return { error: message }
   }
+
+  const queued = emailIds.length || resolved.recipients.length
+  await markCampaignSendSent(supabase, claimId, queued, {
+    audience: input.audience,
+    monthName,
+    teamCheckIns: stats.team.checkIns,
+    teamMiles,
+    source,
+  })
 
   return {
     success: true,
-    queued: emailIds.length || resolved.recipients.length,
+    queued,
     scheduled: !!scheduledAt,
     scheduledAt,
     emailIds,

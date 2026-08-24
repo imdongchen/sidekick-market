@@ -200,7 +200,9 @@ export function MonthlyReviewComposer({
             selected month. Recipients with no check-ins get a nudge to start
             logging; everyone else sees their personal totals. A Vercel Cron
             also sends automatically on the 1st of each month (previous month,
-            all members).
+            all members). Each successful send is recorded in{' '}
+            <code className="text-xs">email_campaign_send</code> so the same
+            month is not emailed twice.
           </p>
         </div>
         <div className="grid gap-0 lg:grid-cols-2">
