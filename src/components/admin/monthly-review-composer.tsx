@@ -8,10 +8,10 @@ import {
   type SendMonthlyReviewResult,
 } from '@/app/admin/emails/monthly-actions'
 import {
-  defaultReviewMonthValue,
   formatReviewMonthName,
   formatSwimCount,
-} from '@/lib/monthly-swim-stats'
+  defaultReviewMonthValue,
+} from '@/lib/monthly-swim-stats-shared'
 import {
   monthlyReviewSubject,
   personalizeMonthlyReviewEmail,
