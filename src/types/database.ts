@@ -65,6 +65,17 @@ export type WorkoutLog = {
   updatedAt: string
 }
 
+/** Planned or logged workout (yardage lives here). */
+export type Workout = {
+  id: number
+  teamId: number | null
+  date: string | null
+  distance: number | null
+  count: number | null
+  duration: number | null
+  createdAt: string
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -92,6 +103,12 @@ export type Database = {
         Row: WorkoutLog
         Insert: Partial<WorkoutLog>
         Update: Partial<WorkoutLog>
+        Relationships: []
+      }
+      workout: {
+        Row: Workout
+        Insert: Partial<Workout>
+        Update: Partial<Workout>
         Relationships: []
       }
     }

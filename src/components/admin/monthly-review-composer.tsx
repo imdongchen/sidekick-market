@@ -1,13 +1,18 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import {
+  fetchMonthlyReviewStats,
   sendMonthlyReviewCampaign,
   type EmailAudience,
   type SendMonthlyReviewResult,
 } from '@/app/admin/emails/monthly-actions'
 import {
-  defaultReviewMonthLabel,
+  defaultReviewMonthValue,
+  formatReviewMonthName,
+  formatSwimCount,
+} from '@/lib/monthly-swim-stats'
+import {
   monthlyReviewSubject,
   personalizeMonthlyReviewEmail,
 } from '@/lib/emails/monthly-swim-review'
@@ -48,9 +53,11 @@ export function MonthlyReviewComposer({
 }: Props) {
   const [audience, setAudience] = useState<EmailAudience>('all_members')
   const [selectedIds, setSelectedIds] = useState<number[]>([])
-  const [month, setMonth] = useState(defaultReviewMonthLabel)
-  const [checkIns, setCheckIns] = useState('')
-  const [miles, setMiles] = useState('')
+  const [month, setMonth] = useState(defaultReviewMonthValue)
+  const [teamCheckIns, setTeamCheckIns] = useState<number | null>(null)
+  const [teamMiles, setTeamMiles] = useState<string | null>(null)
+  const [statsError, setStatsError] = useState<string | null>(null)
+  const [statsLoading, setStatsLoading] = useState(true)
   const [previewNoCheckIns, setPreviewNoCheckIns] = useState(false)
   const [mode, setMode] = useState<'now' | 'schedule'>('now')
   const [scheduledLocal, setScheduledLocal] = useState('')
@@ -59,7 +66,29 @@ export function MonthlyReviewComposer({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pending, startTransition] = useTransition()
 
+  const monthName = formatReviewMonthName(month)
   const coachCount = members.filter((m) => m.role === 'coach').length
+
+  useEffect(() => {
+    let cancelled = false
+    setStatsLoading(true)
+    setStatsError(null)
+    fetchMonthlyReviewStats(month).then((response) => {
+      if (cancelled) return
+      if ('error' in response) {
+        setStatsError(response.error)
+        setTeamCheckIns(null)
+        setTeamMiles(null)
+      } else {
+        setTeamCheckIns(response.teamCheckIns)
+        setTeamMiles(response.teamMiles)
+      }
+      setStatsLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [month])
 
   const filteredMembers = useMemo(() => {
     const q = memberQuery.trim().toLowerCase()
@@ -77,18 +106,27 @@ export function MonthlyReviewComposer({
     return selectedIds.length
   }, [audience, members.length, coachCount, selectedIds.length])
 
-  const subject = monthlyReviewSubject(month.trim() || 'this month')
+  const subject = monthlyReviewSubject(monthName)
 
   const previewHtml = useMemo(
     () =>
       personalizeMonthlyReviewEmail(templateHtml, {
         firstName: 'Alex',
-        month: month.trim() || '—',
-        checkIns: checkIns.trim() || '—',
-        miles: miles.trim() || '—',
+        monthName,
+        teamCheckIns:
+          teamCheckIns != null ? formatSwimCount(teamCheckIns) : '—',
+        teamMiles: teamMiles ?? '—',
+        userCheckIns: previewNoCheckIns ? 0 : 6,
+        userMiles: previewNoCheckIns ? '0' : '2.1',
         hasNoCheckIns: previewNoCheckIns,
       }),
-    [templateHtml, month, checkIns, miles, previewNoCheckIns],
+    [
+      templateHtml,
+      monthName,
+      teamCheckIns,
+      teamMiles,
+      previewNoCheckIns,
+    ],
   )
 
   function toggleMember(id: number) {
@@ -116,8 +154,6 @@ export function MonthlyReviewComposer({
         audience,
         memberIds: audience === 'individuals' ? selectedIds : undefined,
         month,
-        checkIns,
-        miles,
         mode,
         scheduledAt:
           mode === 'schedule' && scheduledLocal
@@ -129,11 +165,12 @@ export function MonthlyReviewComposer({
     })
   }
 
+  const statsReady = teamCheckIns != null && teamMiles != null && !statsLoading
+
   const canSubmit =
     resendConfigured &&
     month.trim() &&
-    checkIns.trim() &&
-    miles.trim() &&
+    statsReady &&
     recipientCount > 0 &&
     (mode === 'now' || !!scheduledLocal) &&
     !pending
@@ -159,8 +196,9 @@ export function MonthlyReviewComposer({
             <span className="font-medium text-zinc-900">{subject}</span>
           </p>
           <p className="mt-2 text-sm text-zinc-600">
-            Recipients with no check-ins this month automatically get a nudge
-            to start logging. Team totals below are shared across the send.
+            Team check-ins and miles are calculated from Supabase for the
+            selected month. Recipients with no check-ins get a nudge to start
+            logging; everyone else sees their personal totals.
           </p>
         </div>
         <div className="grid gap-0 lg:grid-cols-2">
@@ -168,42 +206,29 @@ export function MonthlyReviewComposer({
             <div>
               <label className="text-sm font-medium text-zinc-900">Month</label>
               <input
+                type="month"
                 value={month}
                 onChange={(e) => setMonth(e.target.value)}
-                placeholder="e.g. August 2026"
                 className="mt-1.5 w-full rounded-lg border-0 px-3 py-2 text-sm shadow-sm ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-950"
               />
               <p className="mt-1 text-xs text-zinc-500">
-                Replaces {'{{MONTH}}'} in the subject and body.
+                Email title and copy use {monthName}.
               </p>
             </div>
-            <div>
-              <label className="text-sm font-medium text-zinc-900">
-                Team check-ins this month
-              </label>
-              <input
-                value={checkIns}
-                onChange={(e) => setCheckIns(e.target.value)}
-                placeholder="e.g. 412"
-                className="mt-1.5 w-full rounded-lg border-0 px-3 py-2 text-sm shadow-sm ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-950"
-              />
-              <p className="mt-1 text-xs text-zinc-500">
-                Replaces {'{{CHECK_INS}}'} in the email.
-              </p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-zinc-900">
-                Team miles this month
-              </label>
-              <input
-                value={miles}
-                onChange={(e) => setMiles(e.target.value)}
-                placeholder="e.g. 128"
-                className="mt-1.5 w-full rounded-lg border-0 px-3 py-2 text-sm shadow-sm ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-950"
-              />
-              <p className="mt-1 text-xs text-zinc-500">
-                Replaces {'{{MILES}}'} in the email.
-              </p>
+
+            <div className="rounded-lg bg-zinc-50 px-3 py-3 text-sm text-zinc-700 ring-1 ring-zinc-200">
+              <p className="font-medium text-zinc-900">Team totals (database)</p>
+              {statsLoading && (
+                <p className="mt-1 text-zinc-500">Loading swim stats…</p>
+              )}
+              {statsError && (
+                <p className="mt-1 text-red-700">{statsError}</p>
+              )}
+              {statsReady && (
+                <p className="mt-1">
+                  {formatSwimCount(teamCheckIns)} check-ins · {teamMiles} miles
+                </p>
+              )}
             </div>
 
             <fieldset>
@@ -437,8 +462,8 @@ export function MonthlyReviewComposer({
               Confirm {mode === 'schedule' ? 'schedule' : 'send'}
             </h3>
             <p className="mt-2 text-sm text-zinc-600">
-              This will {mode === 'schedule' ? 'schedule' : 'send'} the monthly
-              swim review to{' '}
+              This will {mode === 'schedule' ? 'schedule' : 'send'} the{' '}
+              {monthName} swim review to{' '}
               <strong className="font-semibold text-zinc-900">
                 {recipientCount}
               </strong>{' '}
@@ -446,9 +471,12 @@ export function MonthlyReviewComposer({
               {mode === 'schedule' && scheduledLocal
                 ? ` at ${formatWhen(new Date(scheduledLocal).toISOString())}`
                 : ''}
-              . Stats: {checkIns.trim()} check-ins, {miles.trim()} miles (
-              {month.trim()}). Members with no check-ins this month get a
-              start-checking-in nudge.
+              . Team totals:{' '}
+              {statsReady
+                ? `${formatSwimCount(teamCheckIns)} check-ins, ${teamMiles} miles`
+                : 'loading…'}
+              . Members with no check-ins this month get a start-checking-in
+              nudge.
             </p>
             <div className="mt-6 flex justify-end gap-2">
               <button

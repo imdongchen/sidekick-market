@@ -2,26 +2,69 @@ export const MONTHLY_REVIEW_CAMPAIGN = 'monthly-swim-review'
 
 export type MonthlyReviewVars = {
   firstName: string
-  month: string
-  checkIns: string
-  miles: string
-  /** True when the recipient has zero check-ins for the month */
+  monthName: string
+  teamCheckIns: string
+  teamMiles: string
+  userCheckIns: number
+  userMiles: string
   hasNoCheckIns: boolean
 }
 
-export function monthlyReviewSubject(month: string) {
-  return `Your team’s ${month} swim review`
+export function monthlyReviewSubject(monthName: string) {
+  return `Your ${monthName} Swim Review`
 }
 
-export function buildPersonalNudgeHtml(hasNoCheckIns: boolean) {
-  if (hasNoCheckIns) {
+function buildPersonalBlockHtml(vars: MonthlyReviewVars) {
+  if (vars.hasNoCheckIns) {
     return `<p style="margin: 0 0 16px; padding: 14px 16px; background: #f0f9ff; border-radius: 12px; font-size: 16px; line-height: 1.55; color: #0c4a6e;">
                   We noticed you haven’t checked in yet this month. Open Sidekick and log your next swim — it only takes a few seconds, and it helps the whole team see the full picture.
                 </p>`
   }
   return `<p style="margin: 0 0 16px; font-size: 16px; line-height: 1.55;">
-                  You’ve been checking in — nice work. Peek at your swims in the app to celebrate the month and see what’s next.
+                  You logged <strong>${vars.userCheckIns} check-in${vars.userCheckIns === 1 ? '' : 's'}</strong> and swam <strong>${vars.userMiles} miles</strong> this month.
                 </p>`
+}
+
+function buildAppSectionHtml(hasNoCheckIns: boolean) {
+  if (hasNoCheckIns) return ''
+  return `<tr>
+              <td style="padding: 16px 28px 8px">
+                <h2
+                  style="
+                    margin: 0 0 12px;
+                    font-size: 18px;
+                    font-weight: 700;
+                    color: #09090b;
+                  "
+                >
+                  Check your swims
+                </h2>
+                <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.55">
+                  Jump into the app to review this month’s check-ins and
+                  distance.
+                </p>
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td>
+                      <a
+                        href="https://sidekickswim.com/open"
+                        style="
+                          display: inline-block;
+                          background: #09090b;
+                          color: #ffffff;
+                          text-decoration: none;
+                          font-size: 15px;
+                          font-weight: 600;
+                          padding: 12px 20px;
+                          border-radius: 10px;
+                        "
+                        >Open Sidekick</a
+                      >
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>`
 }
 
 export function personalizeMonthlyReviewEmail(
@@ -30,16 +73,9 @@ export function personalizeMonthlyReviewEmail(
 ) {
   return html
     .replaceAll('{{firstName}}', vars.firstName || 'there')
-    .replaceAll('{{MONTH}}', vars.month)
-    .replaceAll('{{CHECK_INS}}', vars.checkIns)
-    .replaceAll('{{MILES}}', vars.miles)
-    .replaceAll('{{PERSONAL_NUDGE}}', buildPersonalNudgeHtml(vars.hasNoCheckIns))
-}
-
-/** Default month label for the campaign (current calendar month). */
-export function defaultReviewMonthLabel(date = new Date()) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    year: 'numeric',
-  }).format(date)
+    .replaceAll('{{MONTH}}', vars.monthName)
+    .replaceAll('{{TEAM_CHECK_INS}}', vars.teamCheckIns)
+    .replaceAll('{{TEAM_MILES}}', vars.teamMiles)
+    .replaceAll('{{PERSONAL_BLOCK}}', buildPersonalBlockHtml(vars))
+    .replaceAll('{{APP_SECTION}}', buildAppSectionHtml(vars.hasNoCheckIns))
 }

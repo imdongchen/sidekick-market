@@ -2,34 +2,21 @@
 
 **Audience:** All Sidekick users  
 **From:** Sidekick `<admin@sidekickswim.com>`  
-**Subject:** Your team’s {{MONTH}} swim review  
+**Subject:** Your {{MONTH}} Swim Review  
 **Cadence:** Send once per month from Admin → Emails → Monthly review
 
-> **Before send:** Enter team `{{CHECK_INS}}` and `{{MILES}}` for the month.  
-> Recipients with zero check-ins that month get a nudge to start logging.
+Team check-ins and miles are calculated from Supabase (`workout_log` joined to `workout`) for the selected month.
 
 ---
 
 Hi {{firstName}},
 
-Here’s a quick look at how the team swam in **{{MONTH}}**.
+This month your team logged **{{TEAM_CHECK_INS}} check-ins** and swam **{{TEAM_MILES}} miles**.
 
-This month your team logged **{{CHECK_INS}} check-ins** and swam **{{MILES}} miles**. Every lap adds up — nice work keeping the lanes busy.
-
-{{PERSONAL_NUDGE}}
-
-Open Sidekick to check your swims, see how you stacked up with the team, and keep your streak going.
-
-### Check your swims
-
-Jump into the app to review this month’s check-ins and distance:
-
-- **iPhone:** [Open on the App Store](https://apps.apple.com/us/app/sidekick-swim-app-for-teams/id6677036644)
-- **Open app:** [sidekickswim.com/open](https://sidekickswim.com/open)
-- **Android (beta):** [Download](https://github.com/imdongchen/sidekick-market/releases/download/android%401.6.27/sidekick-android.aab)
+Recipients with check-ins also see their personal totals and an **Open Sidekick** button. Members with no check-ins get a nudge to start logging.
 
 Questions or feedback? Reply to this email or write us at [admin@sidekickswim.com](mailto:admin@sidekickswim.com).
 
 See you at the pool,  
-The Sidekick team  
+Sidekick swim  
 [sidekickswim.com](https://sidekickswim.com)

@@ -5,7 +5,14 @@ import {
   resolveRecipients,
 } from '@/app/admin/emails/recipients'
 import { isAdminDemoMode } from '@/lib/admin-demo-server'
-import { getCheckInEngagementByUserIds } from '@/lib/engagement'
+import {
+  formatReviewMonthName,
+  formatSwimCount,
+  formatSwimMiles,
+  getMonthlySwimStats,
+  getTeamMemberUserIds,
+  parseReviewMonth,
+} from '@/lib/monthly-swim-stats'
 import {
   MONTHLY_REVIEW_CAMPAIGN,
   monthlyReviewSubject,
@@ -22,9 +29,8 @@ export type { EmailAudience }
 export type SendMonthlyReviewInput = {
   audience: EmailAudience
   memberIds?: number[]
+  /** YYYY-MM */
   month: string
-  checkIns: string
-  miles: string
   mode: 'now' | 'schedule'
   /** ISO 8601 datetime when mode is schedule */
   scheduledAt?: string
@@ -40,21 +46,47 @@ export type SendMonthlyReviewResult =
     }
   | { error: string }
 
+export type MonthlyReviewStatsResult =
+  | {
+      teamCheckIns: number
+      teamMiles: string
+      monthName: string
+    }
+  | { error: string }
+
 const BATCH_SIZE = 100
+
+export async function fetchMonthlyReviewStats(
+  month: string,
+): Promise<MonthlyReviewStatsResult> {
+  await requireStaff()
+
+  const parsed = parseReviewMonth(month)
+  if (!parsed) {
+    return { error: 'Choose a valid month.' }
+  }
+
+  const memberUserIds = await getTeamMemberUserIds()
+  const stats = await getMonthlySwimStats(parsed.isoMonth, memberUserIds)
+
+  return {
+    teamCheckIns: stats.team.checkIns,
+    teamMiles: formatSwimMiles(stats.team.yards),
+    monthName: formatReviewMonthName(parsed.isoMonth),
+  }
+}
 
 export async function sendMonthlyReviewCampaign(
   input: SendMonthlyReviewInput,
 ): Promise<SendMonthlyReviewResult> {
   await requireStaff()
 
-  const month = input.month?.trim()
-  const checkIns = input.checkIns?.trim()
-  const miles = input.miles?.trim()
-  if (!month || !checkIns || !miles) {
-    return {
-      error: 'Enter the month label, check-in total, and miles before sending.',
-    }
+  const parsed = parseReviewMonth(input.month?.trim() ?? '')
+  if (!parsed) {
+    return { error: 'Choose a valid month before sending.' }
   }
+
+  const monthName = formatReviewMonthName(parsed.isoMonth)
 
   if (isAdminDemoMode()) {
     const resolved = await resolveRecipients(input.audience, input.memberIds)
@@ -101,12 +133,13 @@ export async function sendMonthlyReviewCampaign(
     return { error: resolved.error }
   }
 
-  const engagement = await getCheckInEngagementByUserIds(
-    resolved.recipients.map((r) => r.userId),
-  )
+  const memberUserIds = await getTeamMemberUserIds()
+  const stats = await getMonthlySwimStats(parsed.isoMonth, memberUserIds)
+  const teamCheckIns = formatSwimCount(stats.team.checkIns)
+  const teamMiles = formatSwimMiles(stats.team.yards)
 
   const htmlTemplate = await loadMonthlyReviewHtml()
-  const subject = monthlyReviewSubject(month)
+  const subject = monthlyReviewSubject(monthName)
   const resend = getResendClient()
   const from = getResendFrom()
   const replyTo = getResendReplyTo()
@@ -116,15 +149,19 @@ export async function sendMonthlyReviewCampaign(
     for (let i = 0; i < resolved.recipients.length; i += BATCH_SIZE) {
       const chunk = resolved.recipients.slice(i, i + BATCH_SIZE)
       const payload = chunk.map((recipient) => {
-        const monthlyCheckIns = recipient.userId
-          ? (engagement.get(recipient.userId)?.monthlyCheckIns ?? 0)
-          : 0
+        const userStats = recipient.userId
+          ? stats.byUser.get(recipient.userId)
+          : undefined
+        const userCheckIns = userStats?.checkIns ?? 0
+        const userMiles = formatSwimMiles(userStats?.yards ?? 0)
         const html = personalizeMonthlyReviewEmail(htmlTemplate, {
           firstName: recipient.firstName || 'there',
-          month,
-          checkIns,
-          miles,
-          hasNoCheckIns: monthlyCheckIns === 0,
+          monthName,
+          teamCheckIns,
+          teamMiles,
+          userCheckIns,
+          userMiles,
+          hasNoCheckIns: userCheckIns === 0,
         })
         return {
           from,
@@ -158,23 +195,27 @@ export async function sendMonthlyReviewCampaign(
       const supabase = createClient()
       const now = new Date().toISOString()
       const rows = chunk.map((recipient, index) => {
-        const monthlyCheckIns = recipient.userId
-          ? (engagement.get(recipient.userId)?.monthlyCheckIns ?? 0)
-          : 0
+        const userStats = recipient.userId
+          ? stats.byUser.get(recipient.userId)
+          : undefined
+        const userCheckIns = userStats?.checkIns ?? 0
         return {
           emailId: ids[index] ?? `pending-${recipient.id}-${Date.now()}`,
           recipientEmail: recipient.email.trim().toLowerCase(),
           eventType: scheduledAt ? 'email.scheduled' : 'email.sent',
           timestamp: scheduledAt ?? now,
           userId: recipient.userId,
-          year: null,
+          year: String(parsed.year),
           metadata: {
             campaign: MONTHLY_REVIEW_CAMPAIGN,
             audience: input.audience,
             scheduledAt: scheduledAt ?? null,
             subject,
-            month,
-            hasNoCheckIns: monthlyCheckIns === 0,
+            month: parsed.isoMonth,
+            teamCheckIns: stats.team.checkIns,
+            teamMiles,
+            userCheckIns,
+            hasNoCheckIns: userCheckIns === 0,
           },
         }
       })
