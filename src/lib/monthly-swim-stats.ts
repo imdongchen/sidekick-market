@@ -6,6 +6,8 @@ import {
   type MonthlySwimTotals,
 } from '@/lib/monthly-swim-stats-shared'
 import { createClient } from '@/supabase/server'
+import type { Database } from '@/types/database'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type { MonthlySwimTotals } from '@/lib/monthly-swim-stats-shared'
 export {
@@ -15,12 +17,15 @@ export {
   formatSwimMiles,
   monthDateRange,
   parseReviewMonth,
+  previousReviewMonthValue,
 } from '@/lib/monthly-swim-stats-shared'
 
 export type MonthlySwimStats = {
   team: MonthlySwimTotals
   byUser: Map<string, MonthlySwimTotals>
 }
+
+type DbClient = SupabaseClient<Database>
 
 /** Demo fixture distances keyed by workout_log.workoutId (yards). */
 const DEMO_WORKOUT_DISTANCE: Record<number, number> = {
@@ -62,7 +67,13 @@ function aggregateDemoStats(
   for (const row of DEMO_WORKOUT_LOGS) {
     const uid = row.createdBy
     const date = row.date
-    if (!uid || !userSet.has(uid) || !date || date < start || date >= endExclusive) {
+    if (
+      !uid ||
+      !userSet.has(uid) ||
+      !date ||
+      date < start ||
+      date >= endExclusive
+    ) {
       continue
     }
     const yards =
@@ -81,13 +92,13 @@ type WorkoutLogRow = {
 }
 
 async function fetchWorkoutDistances(
+  supabase: DbClient,
   workoutIds: number[],
 ): Promise<Map<number, number>> {
   const map = new Map<number, number>()
   const ids = [...new Set(workoutIds.filter((id) => Number.isFinite(id)))]
   if (ids.length === 0) return map
 
-  const supabase = createClient()
   const pageSize = 200
   for (let i = 0; i < ids.length; i += pageSize) {
     const chunk = ids.slice(i, i + pageSize)
@@ -110,12 +121,13 @@ async function fetchWorkoutDistances(
 }
 
 /**
- * Monthly swim totals for a member cohort (typically all visible team members).
+ * Monthly swim totals for a member cohort.
  * Keys in byUser are profile.userId (auth UUID).
  */
 export async function getMonthlySwimStats(
   isoMonth: string,
   userIds: Array<string | null | undefined>,
+  supabase: DbClient = createClient(),
 ): Promise<MonthlySwimStats> {
   const ids = [...new Set(userIds.filter((id): id is string => !!id))]
   if (ids.length === 0) {
@@ -127,7 +139,6 @@ export async function getMonthlySwimStats(
   }
 
   const { start, endExclusive } = monthDateRange(isoMonth)
-  const supabase = createClient()
   const logRows: WorkoutLogRow[] = []
 
   const pageSize = 1000
@@ -154,7 +165,10 @@ export async function getMonthlySwimStats(
   }
 
   const distances = await fetchWorkoutDistances(
-    logRows.map((row) => row.workoutId).filter((id): id is number => id != null),
+    supabase,
+    logRows
+      .map((row) => row.workoutId)
+      .filter((id): id is number => id != null),
   )
 
   const byUser = new Map<string, MonthlySwimTotals>()
@@ -173,20 +187,21 @@ export async function getMonthlySwimStats(
   return { team, byUser }
 }
 
-/** All non-deactivated member auth UUIDs visible to the current staff session. */
-export async function getTeamMemberUserIds(): Promise<string[]> {
+/** All non-deactivated member auth UUIDs (RLS-scoped unless using service role). */
+export async function getTeamMemberUserIds(
+  supabase: DbClient = createClient(),
+): Promise<string[]> {
   if (isAdminDemoMode()) {
-    return DEMO_PROFILES.filter((p) => p.status !== 'deactivated' && p.userId).map(
-      (p) => p.userId!,
-    )
+    return DEMO_PROFILES.filter(
+      (p) => p.status !== 'deactivated' && p.userId,
+    ).map((p) => p.userId!)
   }
 
-  const supabase = createClient()
   const { data, error } = await supabase
     .from('profile')
     .select('userId')
     .neq('status', 'deactivated')
-    .limit(1000)
+    .limit(5000)
 
   if (error) {
     console.error('profile userId query failed', error.message)

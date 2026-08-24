@@ -51,8 +51,14 @@ export async function sendReintroduceCampaign(
     return { error: 'Enter check-in and miles totals before sending.' }
   }
 
+  const supabase = createClient()
+
   if (isAdminDemoMode()) {
-    const resolved = await resolveRecipients(input.audience, input.memberIds)
+    const resolved = await resolveRecipients(
+      input.audience,
+      input.memberIds,
+      supabase,
+    )
     if ('error' in resolved) return { error: resolved.error }
     const scheduledAt =
       input.mode === 'schedule' ? input.scheduledAt : undefined
@@ -91,7 +97,11 @@ export async function sendReintroduceCampaign(
     scheduledAt = when.toISOString()
   }
 
-  const resolved = await resolveRecipients(input.audience, input.memberIds)
+  const resolved = await resolveRecipients(
+    input.audience,
+    input.memberIds,
+    supabase,
+  )
   if ('error' in resolved) {
     return { error: resolved.error }
   }

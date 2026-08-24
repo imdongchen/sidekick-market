@@ -198,7 +198,9 @@ export function MonthlyReviewComposer({
           <p className="mt-2 text-sm text-zinc-600">
             Team check-ins and miles are calculated from Supabase for the
             selected month. Recipients with no check-ins get a nudge to start
-            logging; everyone else sees their personal totals.
+            logging; everyone else sees their personal totals. A Vercel Cron
+            also sends automatically on the 1st of each month (previous month,
+            all members).
           </p>
         </div>
         <div className="grid gap-0 lg:grid-cols-2">

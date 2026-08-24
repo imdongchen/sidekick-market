@@ -17,11 +17,11 @@ export function monthlyReviewSubject(monthName: string) {
 function buildPersonalBlockHtml(vars: MonthlyReviewVars) {
   if (vars.hasNoCheckIns) {
     return `<p style="margin: 0 0 16px; padding: 14px 16px; background: #f0f9ff; border-radius: 12px; font-size: 16px; line-height: 1.55; color: #0c4a6e;">
-                  We noticed you haven’t checked in yet this month. Open Sidekick and log your next swim — it only takes a few seconds, and it helps the whole team see the full picture.
+                  We noticed you didn’t check in during ${vars.monthName}. Open Sidekick and log your next swim — it only takes a few seconds, and it helps the whole team see the full picture.
                 </p>`
   }
   return `<p style="margin: 0 0 16px; font-size: 16px; line-height: 1.55;">
-                  You logged <strong>${vars.userCheckIns} check-in${vars.userCheckIns === 1 ? '' : 's'}</strong> and swam <strong>${vars.userMiles} miles</strong> this month.
+                  You logged <strong>${vars.userCheckIns} check-in${vars.userCheckIns === 1 ? '' : 's'}</strong> and swam <strong>${vars.userMiles} miles</strong> in ${vars.monthName}.
                 </p>`
 }
 

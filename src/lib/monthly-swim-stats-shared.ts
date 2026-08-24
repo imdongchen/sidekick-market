@@ -12,6 +12,13 @@ export function defaultReviewMonthValue(date = new Date()) {
   return `${y}-${m}`
 }
 
+/** Previous calendar month as YYYY-MM (used by the monthly cron). */
+export function previousReviewMonthValue(date = new Date()) {
+  return defaultReviewMonthValue(
+    new Date(date.getFullYear(), date.getMonth() - 1, 1),
+  )
+}
+
 export function parseReviewMonth(isoMonth: string) {
   const match = /^(\d{4})-(\d{2})$/.exec(isoMonth.trim())
   if (!match) return null
