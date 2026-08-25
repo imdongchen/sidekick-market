@@ -201,8 +201,8 @@ export function MonthlyReviewComposer({
             logging; everyone else sees their personal totals. A Vercel Cron
             also sends automatically on the 1st of each month (previous month,
             all members). Sends are recorded in{' '}
-            <code className="text-xs">email_tracking</code> so the same month
-            is not emailed twice.
+            <code className="text-xs">email_tracking</code>; retries skip
+            recipients who already got that month’s email.
           </p>
         </div>
         <div className="grid gap-0 lg:grid-cols-2">

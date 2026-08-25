@@ -112,14 +112,14 @@ export async function sendMonthlyReviewCampaign(
   const result = await dispatchMonthlyReviewCampaign(dispatchClient, {
     ...input,
     source: 'admin',
-    skipIfAlreadySent: false,
+    skipAlreadySentRecipients: true,
   })
 
   if ('error' in result) return { error: result.error }
 
   if (result.skipped) {
     return {
-      error: result.reason ?? 'This monthly review was already sent.',
+      error: result.reason ?? 'This monthly review was already sent to all selected recipients.',
     }
   }
 

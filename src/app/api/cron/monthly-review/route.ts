@@ -38,7 +38,7 @@ export async function GET(request: Request) {
       audience: 'all_members',
       month,
       mode: 'now',
-      skipIfAlreadySent: true,
+      skipAlreadySentRecipients: true,
       source: 'cron',
     })
 
@@ -55,6 +55,7 @@ export async function GET(request: Request) {
       month,
       queued: result.queued,
       skipped: result.skipped ?? false,
+      skippedRecipients: result.skippedRecipients ?? 0,
       reason: result.reason,
       emailIds: result.emailIds,
     })

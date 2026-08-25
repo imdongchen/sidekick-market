@@ -1,5 +1,6 @@
 import {
   type EmailAudience,
+  type EmailRecipient,
   resolveRecipients,
 } from '@/app/admin/emails/recipients'
 import {
@@ -28,9 +29,11 @@ export type DispatchMonthlyReviewInput = {
   mode: 'now' | 'schedule'
   scheduledAt?: string
   /**
-   * When true (default for cron), skip if email_tracking already has a
-   * sent/scheduled row for this campaign+month.
+   * When true (default), skip recipients who already have a sent/scheduled
+   * email_tracking row for this campaign+month, and retry only the rest.
    */
+  skipAlreadySentRecipients?: boolean
+  /** @deprecated Use skipAlreadySentRecipients */
   skipIfAlreadySent?: boolean
   /** Extra metadata merged into email_tracking rows. */
   source?: 'admin' | 'cron'
@@ -43,36 +46,66 @@ export type DispatchMonthlyReviewResult =
       scheduled: boolean
       scheduledAt?: string
       emailIds: string[]
+      /** Recipients skipped because they already got this month’s email */
+      skippedRecipients?: number
+      /** True when every intended recipient was already sent (nothing queued) */
       skipped?: boolean
       reason?: string
     }
   | { error: string }
 
 const BATCH_SIZE = 100
+const TRACKING_PAGE_SIZE = 1000
 
 type DbClient = SupabaseClient<Database>
 
-/** True when this campaign+month was already queued (recorded in email_tracking). */
-async function alreadySentForMonth(
+/**
+ * Recipient emails that already have a sent/scheduled row for this
+ * campaign+month in email_tracking.
+ */
+async function getAlreadySentRecipientEmails(
   supabase: DbClient,
   isoMonth: string,
-): Promise<boolean | { error: string }> {
-  const { data, error } = await supabase
-    .from('email_tracking')
-    .select('id')
-    .contains('metadata', {
-      campaign: MONTHLY_REVIEW_CAMPAIGN,
-      month: isoMonth,
-    })
-    .in('eventType', ['email.sent', 'email.scheduled'])
-    .limit(1)
+): Promise<Set<string> | { error: string }> {
+  const sent = new Set<string>()
+  let from = 0
 
-  if (error) {
-    console.error('monthly review idempotency check failed', error.message)
-    return { error: error.message }
+  for (;;) {
+    const { data, error } = await supabase
+      .from('email_tracking')
+      .select('recipientEmail')
+      .contains('metadata', {
+        campaign: MONTHLY_REVIEW_CAMPAIGN,
+        month: isoMonth,
+      })
+      .in('eventType', ['email.sent', 'email.scheduled'])
+      .range(from, from + TRACKING_PAGE_SIZE - 1)
+
+    if (error) {
+      console.error('monthly review prior-send lookup failed', error.message)
+      return { error: error.message }
+    }
+
+    const rows = data ?? []
+    for (const row of rows) {
+      const email = row.recipientEmail?.trim().toLowerCase()
+      if (email) sent.add(email)
+    }
+
+    if (rows.length < TRACKING_PAGE_SIZE) break
+    from += TRACKING_PAGE_SIZE
   }
 
-  return (data?.length ?? 0) > 0
+  return sent
+}
+
+function filterUnsentRecipients(
+  recipients: EmailRecipient[],
+  alreadySent: Set<string>,
+) {
+  return recipients.filter(
+    (r) => !alreadySent.has(r.email.trim().toLowerCase()),
+  )
 }
 
 export async function dispatchMonthlyReviewCampaign(
@@ -86,7 +119,10 @@ export async function dispatchMonthlyReviewCampaign(
 
   const monthName = formatReviewMonthName(parsed.isoMonth)
   const source = input.source ?? 'admin'
-  const skipIfAlreadySent = input.skipIfAlreadySent ?? source === 'cron'
+  const skipAlreadySentRecipients =
+    input.skipAlreadySentRecipients ??
+    input.skipIfAlreadySent ??
+    true
 
   if (!process.env.RESEND_API_KEY) {
     return {
@@ -112,25 +148,6 @@ export async function dispatchMonthlyReviewCampaign(
     scheduledAt = when.toISOString()
   }
 
-  const already = await alreadySentForMonth(supabase, parsed.isoMonth)
-  if (typeof already === 'object') {
-    return { error: `Could not check prior sends: ${already.error}` }
-  }
-  if (already) {
-    const reason = `Monthly review for ${parsed.isoMonth} was already sent.`
-    if (skipIfAlreadySent) {
-      return {
-        success: true,
-        queued: 0,
-        scheduled: false,
-        emailIds: [],
-        skipped: true,
-        reason,
-      }
-    }
-    return { error: `${reason} Duplicate sends are blocked.` }
-  }
-
   const resolved = await resolveRecipients(
     input.audience,
     input.memberIds,
@@ -138,6 +155,35 @@ export async function dispatchMonthlyReviewCampaign(
   )
   if ('error' in resolved) {
     return { error: resolved.error }
+  }
+
+  let recipients = resolved.recipients
+  let skippedRecipients = 0
+
+  if (skipAlreadySentRecipients) {
+    const alreadySent = await getAlreadySentRecipientEmails(
+      supabase,
+      parsed.isoMonth,
+    )
+    if ('error' in alreadySent) {
+      return { error: `Could not check prior sends: ${alreadySent.error}` }
+    }
+
+    const remaining = filterUnsentRecipients(recipients, alreadySent)
+    skippedRecipients = recipients.length - remaining.length
+    recipients = remaining
+
+    if (recipients.length === 0) {
+      return {
+        success: true,
+        queued: 0,
+        scheduled: false,
+        emailIds: [],
+        skippedRecipients,
+        skipped: true,
+        reason: `All ${skippedRecipients} recipient${skippedRecipients === 1 ? '' : 's'} already received the ${parsed.isoMonth} monthly review.`,
+      }
+    }
   }
 
   const memberUserIds = await getTeamMemberUserIds(supabase)
@@ -157,8 +203,8 @@ export async function dispatchMonthlyReviewCampaign(
   const emailIds: string[] = []
 
   try {
-    for (let i = 0; i < resolved.recipients.length; i += BATCH_SIZE) {
-      const chunk = resolved.recipients.slice(i, i + BATCH_SIZE)
+    for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+      const chunk = recipients.slice(i, i + BATCH_SIZE)
       const payload = chunk.map((recipient) => {
         const userStats = recipient.userId
           ? stats.byUser.get(recipient.userId)
@@ -194,7 +240,7 @@ export async function dispatchMonthlyReviewCampaign(
         return {
           error:
             emailIds.length > 0
-              ? `Partially sent (${emailIds.length} queued), then failed: ${error.message}`
+              ? `Partially sent (${emailIds.length} queued${skippedRecipients ? `, ${skippedRecipients} already sent` : ''}), then failed: ${error.message}`
               : error.message,
         }
       }
@@ -244,9 +290,10 @@ export async function dispatchMonthlyReviewCampaign(
 
   return {
     success: true,
-    queued: emailIds.length || resolved.recipients.length,
+    queued: emailIds.length || recipients.length,
     scheduled: !!scheduledAt,
     scheduledAt,
     emailIds,
+    skippedRecipients,
   }
 }
