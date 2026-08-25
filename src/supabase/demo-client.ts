@@ -16,7 +16,6 @@ const tables: Record<string, Row[]> = {
   profile: DEMO_PROFILES as unknown as Row[],
   team: DEMO_TEAMS as unknown as Row[],
   email_tracking: DEMO_EMAIL_TRACKING as unknown as Row[],
-  email_campaign_send: [],
   workout_log: DEMO_WORKOUT_LOGS as unknown as Row[],
 }
 
