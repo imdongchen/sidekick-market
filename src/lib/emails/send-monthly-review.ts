@@ -4,6 +4,10 @@ import {
   resolveRecipients,
 } from '@/app/admin/emails/recipients'
 import {
+  sendMonthlyReviewAdminSummary,
+  type MonthlyReviewSendSummary,
+} from '@/lib/emails/monthly-review-admin-summary'
+import {
   MONTHLY_REVIEW_CAMPAIGN,
   monthlyReviewSubject,
   personalizeMonthlyReviewEmail,
@@ -157,6 +161,7 @@ export async function dispatchMonthlyReviewCampaign(
     return { error: resolved.error }
   }
 
+  const audienceCount = resolved.recipients.length
   let recipients = resolved.recipients
   let skippedRecipients = 0
 
@@ -174,6 +179,18 @@ export async function dispatchMonthlyReviewCampaign(
     recipients = remaining
 
     if (recipients.length === 0) {
+      await sendMonthlyReviewAdminSummary({
+        monthName,
+        isoMonth: parsed.isoMonth,
+        source,
+        audience: input.audience,
+        audienceCount,
+        skippedAlreadySent: skippedRecipients,
+        attempted: 0,
+        succeeded: 0,
+        failed: 0,
+        scheduled: false,
+      })
       return {
         success: true,
         queued: 0,
@@ -201,6 +218,21 @@ export async function dispatchMonthlyReviewCampaign(
   const from = getResendFrom()
   const replyTo = getResendReplyTo()
   const emailIds: string[] = []
+  const attempted = recipients.length
+
+  const baseSummary = (): Omit<
+    MonthlyReviewSendSummary,
+    'succeeded' | 'failed' | 'error'
+  > => ({
+    monthName,
+    isoMonth: parsed.isoMonth,
+    source,
+    audience: input.audience,
+    audienceCount,
+    skippedAlreadySent: skippedRecipients,
+    attempted,
+    scheduled: !!scheduledAt,
+  })
 
   try {
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
@@ -237,12 +269,17 @@ export async function dispatchMonthlyReviewCampaign(
 
       const { data, error } = await resend.batch.send(payload)
       if (error) {
-        return {
-          error:
-            emailIds.length > 0
-              ? `Partially sent (${emailIds.length} queued${skippedRecipients ? `, ${skippedRecipients} already sent` : ''}), then failed: ${error.message}`
-              : error.message,
-        }
+        const message =
+          emailIds.length > 0
+            ? `Partially sent (${emailIds.length} queued${skippedRecipients ? `, ${skippedRecipients} already sent` : ''}), then failed: ${error.message}`
+            : error.message
+        await sendMonthlyReviewAdminSummary({
+          ...baseSummary(),
+          succeeded: emailIds.length,
+          failed: attempted - emailIds.length,
+          error: message,
+        })
+        return { error: message }
       }
 
       const ids = (data?.data ?? [])
@@ -280,17 +317,29 @@ export async function dispatchMonthlyReviewCampaign(
       await supabase.from('email_tracking').insert(rows)
     }
   } catch (err) {
-    return {
-      error:
-        err instanceof Error
-          ? err.message
-          : 'Failed to send emails via Resend.',
-    }
+    const message =
+      err instanceof Error
+        ? err.message
+        : 'Failed to send emails via Resend.'
+    await sendMonthlyReviewAdminSummary({
+      ...baseSummary(),
+      succeeded: emailIds.length,
+      failed: attempted - emailIds.length,
+      error: message,
+    })
+    return { error: message }
   }
+
+  const succeeded = emailIds.length || recipients.length
+  await sendMonthlyReviewAdminSummary({
+    ...baseSummary(),
+    succeeded,
+    failed: 0,
+  })
 
   return {
     success: true,
-    queued: emailIds.length || recipients.length,
+    queued: succeeded,
     scheduled: !!scheduledAt,
     scheduledAt,
     emailIds,
