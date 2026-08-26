@@ -4,7 +4,8 @@ import { createServiceClient } from '@/supabase/service'
 import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300
+/** Hobby plan allows 1–60s; Pro can raise this if batches grow. */
+export const maxDuration = 60
 
 /**
  * Vercel Cron: 1st of each month at 15:00 UTC (`vercel.json`).
