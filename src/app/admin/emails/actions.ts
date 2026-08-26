@@ -1,5 +1,9 @@
 'use server'
 
+import {
+  type EmailAudience,
+  resolveRecipients,
+} from '@/app/admin/emails/recipients'
 import { isAdminDemoMode } from '@/lib/admin-demo-server'
 import {
   personalizeReintroduceEmail,
@@ -10,10 +14,9 @@ import { loadReintroduceHtml } from '@/lib/emails/reintroduce-sidekick.server'
 import { getResendClient, getResendFrom, getResendReplyTo } from '@/lib/resend'
 import { requireStaff } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
-import type { Profile } from '@/types/database'
 import { revalidatePath } from 'next/cache'
 
-export type EmailAudience = 'all_members' | 'all_coaches' | 'individuals'
+export type { EmailAudience }
 
 export type SendReintroduceInput = {
   audience: EmailAudience
@@ -37,57 +40,6 @@ export type SendReintroduceResult =
 
 const BATCH_SIZE = 100
 
-type Recipient = Pick<
-  Profile,
-  'id' | 'firstName' | 'lastName' | 'email' | 'userId' | 'role' | 'status'
->
-
-function isValidEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-}
-
-async function resolveRecipients(
-  audience: EmailAudience,
-  memberIds: number[] | undefined,
-): Promise<{ recipients: Recipient[] } | { error: string }> {
-  const supabase = createClient()
-
-  let query = supabase
-    .from('profile')
-    .select('id, firstName, lastName, email, userId, role, status')
-    .neq('status', 'deactivated')
-    .order('lastName', { ascending: true })
-    .order('firstName', { ascending: true })
-    .limit(1000)
-
-  if (audience === 'all_coaches') {
-    query = query.eq('role', 'coach')
-  } else if (audience === 'individuals') {
-    const ids = [
-      ...new Set((memberIds ?? []).filter((id) => Number.isFinite(id))),
-    ]
-    if (ids.length === 0) {
-      return { error: 'Select at least one individual recipient.' }
-    }
-    query = query.in('id', ids)
-  }
-
-  const { data, error } = await query
-  if (error) {
-    return { error: error.message }
-  }
-
-  const recipients = (data ?? []).filter(
-    (r) => r.email && isValidEmail(r.email.trim()),
-  )
-
-  if (recipients.length === 0) {
-    return { error: 'No recipients with a valid email address matched.' }
-  }
-
-  return { recipients }
-}
-
 export async function sendReintroduceCampaign(
   input: SendReintroduceInput,
 ): Promise<SendReintroduceResult> {
@@ -99,8 +51,14 @@ export async function sendReintroduceCampaign(
     return { error: 'Enter check-in and miles totals before sending.' }
   }
 
+  const supabase = createClient()
+
   if (isAdminDemoMode()) {
-    const resolved = await resolveRecipients(input.audience, input.memberIds)
+    const resolved = await resolveRecipients(
+      input.audience,
+      input.memberIds,
+      supabase,
+    )
     if ('error' in resolved) return { error: resolved.error }
     const scheduledAt =
       input.mode === 'schedule' ? input.scheduledAt : undefined
@@ -139,7 +97,11 @@ export async function sendReintroduceCampaign(
     scheduledAt = when.toISOString()
   }
 
-  const resolved = await resolveRecipients(input.audience, input.memberIds)
+  const resolved = await resolveRecipients(
+    input.audience,
+    input.memberIds,
+    supabase,
+  )
   if ('error' in resolved) {
     return { error: resolved.error }
   }
