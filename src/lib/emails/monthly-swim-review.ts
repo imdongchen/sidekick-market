@@ -3,8 +3,10 @@ export const MONTHLY_REVIEW_CAMPAIGN = 'monthly-swim-review'
 export type MonthlyReviewVars = {
   firstName: string
   monthName: string
-  teamCheckIns: string
-  teamMiles: string
+  averageCheckIns: string
+  averageMiles: string
+  winnerCheckIns: string
+  winnerMiles: string
   userCheckIns: number
   userMiles: string
   hasNoCheckIns: boolean
@@ -17,11 +19,11 @@ export function monthlyReviewSubject(monthName: string) {
 function buildPersonalBlockHtml(vars: MonthlyReviewVars) {
   if (vars.hasNoCheckIns) {
     return `<p style="margin: 0 0 16px; padding: 14px 16px; background: #f0f9ff; border-radius: 12px; font-size: 16px; line-height: 1.55; color: #0c4a6e;">
-                  We noticed you didn’t check in during ${vars.monthName}. Open Sidekick and log your next swim — it only takes a few seconds, and it helps the whole team see the full picture.
+                  We missed your check-ins in ${vars.monthName}. Teammates averaged <strong>${vars.averageCheckIns} check-ins</strong> — open Sidekick, log your next swim, and climb back onto the board. Every check-in counts.
                 </p>`
   }
   return `<p style="margin: 0 0 16px; font-size: 16px; line-height: 1.55;">
-                  You logged <strong>${vars.userCheckIns} check-in${vars.userCheckIns === 1 ? '' : 's'}</strong> and swam <strong>${vars.userMiles} miles</strong> in ${vars.monthName}.
+                  You logged <strong>${vars.userCheckIns} check-in${vars.userCheckIns === 1 ? '' : 's'}</strong> and swam <strong>${vars.userMiles} miles</strong> in ${vars.monthName}. Keep stacking those check-ins — can you beat the monthly leader next time?
                 </p>`
 }
 
@@ -37,11 +39,10 @@ function buildAppSectionHtml(hasNoCheckIns: boolean) {
                     color: #09090b;
                   "
                 >
-                  Check your swims
+                  Keep the streak going
                 </h2>
                 <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.55">
-                  Jump into the app to review this month’s check-ins and
-                  distance.
+                  Jump into Sidekick to log today’s swim and see how you stack up.
                 </p>
                 <table role="presentation" cellpadding="0" cellspacing="0">
                   <tr>
@@ -74,8 +75,10 @@ export function personalizeMonthlyReviewEmail(
   return html
     .replaceAll('{{firstName}}', vars.firstName || 'there')
     .replaceAll('{{MONTH}}', vars.monthName)
-    .replaceAll('{{TEAM_CHECK_INS}}', vars.teamCheckIns)
-    .replaceAll('{{TEAM_MILES}}', vars.teamMiles)
+    .replaceAll('{{AVG_CHECK_INS}}', vars.averageCheckIns)
+    .replaceAll('{{AVG_MILES}}', vars.averageMiles)
+    .replaceAll('{{WINNER_CHECK_INS}}', vars.winnerCheckIns)
+    .replaceAll('{{WINNER_MILES}}', vars.winnerMiles)
     .replaceAll('{{PERSONAL_BLOCK}}', buildPersonalBlockHtml(vars))
     .replaceAll('{{APP_SECTION}}', buildAppSectionHtml(vars.hasNoCheckIns))
 }

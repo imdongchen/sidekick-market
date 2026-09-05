@@ -8,9 +8,8 @@ import {
   type SendMonthlyReviewResult,
 } from '@/app/admin/emails/monthly-actions'
 import {
-  formatReviewMonthName,
-  formatSwimCount,
   defaultReviewMonthValue,
+  formatReviewMonthName,
 } from '@/lib/monthly-swim-stats-shared'
 import {
   monthlyReviewSubject,
@@ -54,8 +53,10 @@ export function MonthlyReviewComposer({
   const [audience, setAudience] = useState<EmailAudience>('all_members')
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [month, setMonth] = useState(defaultReviewMonthValue)
-  const [teamCheckIns, setTeamCheckIns] = useState<number | null>(null)
-  const [teamMiles, setTeamMiles] = useState<string | null>(null)
+  const [averageCheckIns, setAverageCheckIns] = useState<string | null>(null)
+  const [averageMiles, setAverageMiles] = useState<string | null>(null)
+  const [winnerCheckIns, setWinnerCheckIns] = useState<string | null>(null)
+  const [winnerMiles, setWinnerMiles] = useState<string | null>(null)
   const [statsError, setStatsError] = useState<string | null>(null)
   const [statsLoading, setStatsLoading] = useState(true)
   const [previewNoCheckIns, setPreviewNoCheckIns] = useState(false)
@@ -77,11 +78,15 @@ export function MonthlyReviewComposer({
       if (cancelled) return
       if ('error' in response) {
         setStatsError(response.error)
-        setTeamCheckIns(null)
-        setTeamMiles(null)
+        setAverageCheckIns(null)
+        setAverageMiles(null)
+        setWinnerCheckIns(null)
+        setWinnerMiles(null)
       } else {
-        setTeamCheckIns(response.teamCheckIns)
-        setTeamMiles(response.teamMiles)
+        setAverageCheckIns(response.averageCheckIns)
+        setAverageMiles(response.averageMiles)
+        setWinnerCheckIns(response.winnerCheckIns)
+        setWinnerMiles(response.winnerMiles)
       }
       setStatsLoading(false)
     })
@@ -113,9 +118,10 @@ export function MonthlyReviewComposer({
       personalizeMonthlyReviewEmail(templateHtml, {
         firstName: 'Alex',
         monthName,
-        teamCheckIns:
-          teamCheckIns != null ? formatSwimCount(teamCheckIns) : '—',
-        teamMiles: teamMiles ?? '—',
+        averageCheckIns: averageCheckIns ?? '—',
+        averageMiles: averageMiles ?? '—',
+        winnerCheckIns: winnerCheckIns ?? '—',
+        winnerMiles: winnerMiles ?? '—',
         userCheckIns: previewNoCheckIns ? 0 : 6,
         userMiles: previewNoCheckIns ? '0' : '2.1',
         hasNoCheckIns: previewNoCheckIns,
@@ -123,8 +129,10 @@ export function MonthlyReviewComposer({
     [
       templateHtml,
       monthName,
-      teamCheckIns,
-      teamMiles,
+      averageCheckIns,
+      averageMiles,
+      winnerCheckIns,
+      winnerMiles,
       previewNoCheckIns,
     ],
   )
@@ -165,7 +173,12 @@ export function MonthlyReviewComposer({
     })
   }
 
-  const statsReady = teamCheckIns != null && teamMiles != null && !statsLoading
+  const statsReady =
+    averageCheckIns != null &&
+    averageMiles != null &&
+    winnerCheckIns != null &&
+    winnerMiles != null &&
+    !statsLoading
 
   const canSubmit =
     resendConfigured &&
@@ -196,11 +209,12 @@ export function MonthlyReviewComposer({
             <span className="font-medium text-zinc-900">{subject}</span>
           </p>
           <p className="mt-2 text-sm text-zinc-600">
-            Team check-ins and miles are calculated from Supabase for the
-            selected month. Recipients with no check-ins get a nudge to start
-            logging; everyone else sees their personal totals. A Vercel Cron
-            also sends automatically on the 1st of each month (previous month,
-            all members). Sends are recorded in{' '}
+            Team averages and winners come from{' '}
+            <code className="text-xs">aggr_distance</code> for the selected
+            month. Recipients with no check-ins get a nudge to start logging;
+            everyone else sees their personal totals. A Vercel Cron also sends
+            automatically on the 1st of each month (previous month, all
+            members). Sends are recorded in{' '}
             <code className="text-xs">email_tracking</code>; retries skip
             recipients who already got that month’s email.
           </p>
@@ -221,7 +235,9 @@ export function MonthlyReviewComposer({
             </div>
 
             <div className="rounded-lg bg-zinc-50 px-3 py-3 text-sm text-zinc-700 ring-1 ring-zinc-200">
-              <p className="font-medium text-zinc-900">Team totals (database)</p>
+              <p className="font-medium text-zinc-900">
+                Team highlights (aggr_distance)
+              </p>
               {statsLoading && (
                 <p className="mt-1 text-zinc-500">Loading swim stats…</p>
               )}
@@ -229,9 +245,14 @@ export function MonthlyReviewComposer({
                 <p className="mt-1 text-red-700">{statsError}</p>
               )}
               {statsReady && (
-                <p className="mt-1">
-                  {formatSwimCount(teamCheckIns)} check-ins · {teamMiles} miles
-                </p>
+                <div className="mt-1 space-y-0.5">
+                  <p>
+                    Avg {averageCheckIns} check-ins · {averageMiles} miles
+                  </p>
+                  <p>
+                    Top {winnerCheckIns} check-ins · {winnerMiles} miles
+                  </p>
+                </div>
               )}
             </div>
 
@@ -475,9 +496,9 @@ export function MonthlyReviewComposer({
               {mode === 'schedule' && scheduledLocal
                 ? ` at ${formatWhen(new Date(scheduledLocal).toISOString())}`
                 : ''}
-              . Team totals:{' '}
+              . Team highlights:{' '}
               {statsReady
-                ? `${formatSwimCount(teamCheckIns)} check-ins, ${teamMiles} miles`
+                ? `avg ${averageCheckIns} check-ins / ${averageMiles} miles; top ${winnerCheckIns} check-ins / ${winnerMiles} miles`
                 : 'loading…'}
               . Members with no check-ins this month get a start-checking-in
               nudge.

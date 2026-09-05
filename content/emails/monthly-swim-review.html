@@ -18,7 +18,8 @@
   >
     <!--
       Subject: Your {{MONTH}} Swim Review
-      Team and personal stats are computed from Supabase before send.
+      Team averages, winners, and personal stats are computed from
+      aggr_distance before send.
     -->
     <table
       role="presentation"
@@ -77,10 +78,13 @@
               <td style="padding: 16px 28px 8px; font-size: 16px; line-height: 1.55">
                 <p style="margin: 0 0 16px">Hi {{firstName}},</p>
                 <p style="margin: 0 0 16px">
-                  In {{MONTH}} your team logged
-                  <strong>{{TEAM_CHECK_INS}} check-ins</strong> and swam
-                  <strong>{{TEAM_MILES}} miles</strong>. Every lap adds up —
-                  nice work keeping the lanes busy.
+                  In {{MONTH}}, teammates averaged
+                  <strong>{{AVG_CHECK_INS}} check-ins</strong> and
+                  <strong>{{AVG_MILES}} miles</strong> each. The leaders hit
+                  <strong>{{WINNER_CHECK_INS}} check-ins</strong> and
+                  <strong>{{WINNER_MILES}} miles</strong> — a little friendly
+                  competition to get you back in the water. Every swim you log
+                  brings you closer.
                 </p>
                 {{PERSONAL_BLOCK}}
               </td>

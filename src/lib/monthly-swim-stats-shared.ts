@@ -54,6 +54,16 @@ export function formatSwimCount(count: number) {
   return count.toLocaleString('en-US')
 }
 
+/** Per-member averages — one decimal when not a whole number. */
+export function formatAverageCheckIns(average: number) {
+  if (!Number.isFinite(average) || average <= 0) return '0'
+  if (Number.isInteger(average)) return average.toLocaleString('en-US')
+  return average.toLocaleString('en-US', {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  })
+}
+
 export function formatSwimMiles(yards: number) {
   const miles = yardsToMiles(yards)
   if (miles >= 100) return miles.toFixed(0)
@@ -64,4 +74,37 @@ export function formatSwimMiles(yards: number) {
 
 export function emptyMonthlySwimTotals(): MonthlySwimTotals {
   return { checkIns: 0, yards: 0 }
+}
+
+export type MonthlySwimHighlights = {
+  averageCheckIns: number
+  averageYards: number
+  winnerCheckIns: number
+  winnerYards: number
+  memberCount: number
+}
+
+/**
+ * Team averages (including members with zero activity) and leaderboard peaks
+ * from per-user `aggr_distance` totals.
+ */
+export function summarizeMonthlySwimStats(
+  byUser: Map<string, MonthlySwimTotals>,
+  team: MonthlySwimTotals,
+  memberCount: number,
+): MonthlySwimHighlights {
+  const n = Math.max(memberCount, 1)
+  let winnerCheckIns = 0
+  let winnerYards = 0
+  for (const totals of byUser.values()) {
+    if (totals.checkIns > winnerCheckIns) winnerCheckIns = totals.checkIns
+    if (totals.yards > winnerYards) winnerYards = totals.yards
+  }
+  return {
+    averageCheckIns: team.checkIns / n,
+    averageYards: team.yards / n,
+    winnerCheckIns,
+    winnerYards,
+    memberCount: n,
+  }
 }

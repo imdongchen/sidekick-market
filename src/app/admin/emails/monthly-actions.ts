@@ -7,11 +7,14 @@ import {
 import { isAdminDemoMode } from '@/lib/admin-demo-server'
 import { dispatchMonthlyReviewCampaign } from '@/lib/emails/send-monthly-review'
 import {
+  formatAverageCheckIns,
   formatReviewMonthName,
+  formatSwimCount,
   formatSwimMiles,
   getMonthlySwimStats,
   getTeamMemberUserIds,
   parseReviewMonth,
+  summarizeMonthlySwimStats,
 } from '@/lib/monthly-swim-stats'
 import { requireStaff } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
@@ -42,8 +45,10 @@ export type SendMonthlyReviewResult =
 
 export type MonthlyReviewStatsResult =
   | {
-      teamCheckIns: number
-      teamMiles: string
+      averageCheckIns: string
+      averageMiles: string
+      winnerCheckIns: string
+      winnerMiles: string
       monthName: string
     }
   | { error: string }
@@ -65,10 +70,17 @@ export async function fetchMonthlyReviewStats(
     memberUserIds,
     supabase,
   )
+  const highlights = summarizeMonthlySwimStats(
+    stats.byUser,
+    stats.team,
+    memberUserIds.length,
+  )
 
   return {
-    teamCheckIns: stats.team.checkIns,
-    teamMiles: formatSwimMiles(stats.team.yards),
+    averageCheckIns: formatAverageCheckIns(highlights.averageCheckIns),
+    averageMiles: formatSwimMiles(highlights.averageYards),
+    winnerCheckIns: formatSwimCount(highlights.winnerCheckIns),
+    winnerMiles: formatSwimMiles(highlights.winnerYards),
     monthName: formatReviewMonthName(parsed.isoMonth),
   }
 }

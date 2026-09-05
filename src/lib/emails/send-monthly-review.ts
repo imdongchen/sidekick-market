@@ -14,12 +14,14 @@ import {
 } from '@/lib/emails/monthly-swim-review'
 import { loadMonthlyReviewHtml } from '@/lib/emails/monthly-swim-review.server'
 import {
+  formatAverageCheckIns,
   formatReviewMonthName,
   formatSwimCount,
   formatSwimMiles,
   getMonthlySwimStats,
   getTeamMemberUserIds,
   parseReviewMonth,
+  summarizeMonthlySwimStats,
 } from '@/lib/monthly-swim-stats'
 import { getResendClient, getResendFrom, getResendReplyTo } from '@/lib/resend'
 import type { Database } from '@/types/database'
@@ -209,8 +211,15 @@ export async function dispatchMonthlyReviewCampaign(
     memberUserIds,
     supabase,
   )
-  const teamCheckIns = formatSwimCount(stats.team.checkIns)
-  const teamMiles = formatSwimMiles(stats.team.yards)
+  const highlights = summarizeMonthlySwimStats(
+    stats.byUser,
+    stats.team,
+    memberUserIds.length,
+  )
+  const averageCheckIns = formatAverageCheckIns(highlights.averageCheckIns)
+  const averageMiles = formatSwimMiles(highlights.averageYards)
+  const winnerCheckIns = formatSwimCount(highlights.winnerCheckIns)
+  const winnerMiles = formatSwimMiles(highlights.winnerYards)
 
   const htmlTemplate = await loadMonthlyReviewHtml()
   const subject = monthlyReviewSubject(monthName)
@@ -246,8 +255,10 @@ export async function dispatchMonthlyReviewCampaign(
         const html = personalizeMonthlyReviewEmail(htmlTemplate, {
           firstName: recipient.firstName || 'there',
           monthName,
-          teamCheckIns,
-          teamMiles,
+          averageCheckIns,
+          averageMiles,
+          winnerCheckIns,
+          winnerMiles,
           userCheckIns,
           userMiles,
           hasNoCheckIns: userCheckIns === 0,
@@ -306,8 +317,10 @@ export async function dispatchMonthlyReviewCampaign(
             scheduledAt: scheduledAt ?? null,
             subject,
             month: parsed.isoMonth,
-            teamCheckIns: stats.team.checkIns,
-            teamMiles,
+            averageCheckIns: highlights.averageCheckIns,
+            averageMiles,
+            winnerCheckIns: highlights.winnerCheckIns,
+            winnerMiles,
             userCheckIns,
             hasNoCheckIns: userCheckIns === 0,
             source,

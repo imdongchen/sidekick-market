@@ -12,12 +12,14 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 export type { MonthlySwimTotals } from '@/lib/monthly-swim-stats-shared'
 export {
   defaultReviewMonthValue,
+  formatAverageCheckIns,
   formatReviewMonthName,
   formatSwimCount,
   formatSwimMiles,
   monthDateRange,
   parseReviewMonth,
   previousReviewMonthValue,
+  summarizeMonthlySwimStats,
 } from '@/lib/monthly-swim-stats-shared'
 
 export type MonthlySwimStats = {
@@ -44,13 +46,25 @@ const DEMO_WORKOUT_DISTANCE: Record<number, number> = {
   113: 3100,
 }
 
-function addToMap(
+function addLogToMap(
   map: Map<string, MonthlySwimTotals>,
   userId: string,
   yards: number,
 ) {
   const entry = map.get(userId) ?? emptyMonthlySwimTotals()
   entry.checkIns += 1
+  entry.yards += yards
+  map.set(userId, entry)
+}
+
+function addAggrToMap(
+  map: Map<string, MonthlySwimTotals>,
+  userId: string,
+  checkIns: number,
+  yards: number,
+) {
+  const entry = map.get(userId) ?? emptyMonthlySwimTotals()
+  entry.checkIns += checkIns
   entry.yards += yards
   map.set(userId, entry)
 }
@@ -78,7 +92,7 @@ function aggregateDemoStats(
     }
     const yards =
       (row.workoutId != null ? DEMO_WORKOUT_DISTANCE[row.workoutId] : 0) ?? 0
-    addToMap(byUser, uid, yards)
+    addLogToMap(byUser, uid, yards)
     team.checkIns += 1
     team.yards += yards
   }
@@ -86,43 +100,16 @@ function aggregateDemoStats(
   return { team, byUser }
 }
 
-type WorkoutLogRow = {
-  createdBy: string | null
-  workoutId: number | null
-}
-
-async function fetchWorkoutDistances(
-  supabase: DbClient,
-  workoutIds: number[],
-): Promise<Map<number, number>> {
-  const map = new Map<number, number>()
-  const ids = [...new Set(workoutIds.filter((id) => Number.isFinite(id)))]
-  if (ids.length === 0) return map
-
-  const pageSize = 200
-  for (let i = 0; i < ids.length; i += pageSize) {
-    const chunk = ids.slice(i, i + pageSize)
-    const { data, error } = await supabase
-      .from('workout')
-      .select('id, distance')
-      .in('id', chunk)
-
-    if (error) {
-      console.error('workout distance query failed', error.message)
-      break
-    }
-
-    for (const row of data ?? []) {
-      map.set(row.id, row.distance ?? 0)
-    }
-  }
-
-  return map
+type AggrDistanceRow = {
+  userId: string
+  distance: number
+  count: number
 }
 
 /**
  * Monthly swim totals for a member cohort.
  * Keys in byUser are profile.userId (auth UUID).
+ * Production reads pre-aggregated rows from `aggr_distance` (span=month).
  */
 export async function getMonthlySwimStats(
   isoMonth: string,
@@ -138,18 +125,18 @@ export async function getMonthlySwimStats(
     return aggregateDemoStats(isoMonth, ids)
   }
 
-  const { start, endExclusive } = monthDateRange(isoMonth)
-  const logRows: WorkoutLogRow[] = []
+  const { start } = monthDateRange(isoMonth)
+  const aggrRows: AggrDistanceRow[] = []
 
   const pageSize = 1000
   let from = 0
   for (;;) {
     const { data, error } = await supabase
-      .from('workout_log')
-      .select('createdBy, workoutId')
-      .in('createdBy', ids)
-      .gte('date', start)
-      .lt('date', endExclusive)
+      .from('aggr_distance')
+      .select('userId, distance, count')
+      .eq('span', 'month')
+      .eq('start', start)
+      .in('userId', ids)
       .range(from, from + pageSize - 1)
 
     if (error) {
@@ -157,30 +144,21 @@ export async function getMonthlySwimStats(
       break
     }
 
-    const rows = (data ?? []) as WorkoutLogRow[]
-    logRows.push(...rows)
+    const rows = (data ?? []) as AggrDistanceRow[]
+    aggrRows.push(...rows)
 
     if (rows.length < pageSize) break
     from += pageSize
   }
 
-  const distances = await fetchWorkoutDistances(
-    supabase,
-    logRows
-      .map((row) => row.workoutId)
-      .filter((id): id is number => id != null),
-  )
-
   const byUser = new Map<string, MonthlySwimTotals>()
   const team = emptyMonthlySwimTotals()
 
-  for (const row of logRows) {
-    const uid = row.createdBy
-    if (!uid) continue
-    const yards =
-      row.workoutId != null ? (distances.get(row.workoutId) ?? 0) : 0
-    addToMap(byUser, uid, yards)
-    team.checkIns += 1
+  for (const row of aggrRows) {
+    const yards = Number(row.distance) || 0
+    const checkIns = Number(row.count) || 0
+    addAggrToMap(byUser, row.userId, checkIns, yards)
+    team.checkIns += checkIns
     team.yards += yards
   }
 

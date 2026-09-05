@@ -8,6 +8,7 @@ export type Json =
 
 export type Role = 'coach' | 'swimmer' | 'admin'
 export type Status = 'active' | 'deactivated' | 'pending' | 'invited'
+export type TimeSpan = 'week' | 'month' | 'year' | 'max'
 
 export type Profile = {
   id: number
@@ -76,6 +77,20 @@ export type Workout = {
   createdAt: string
 }
 
+/** Pre-aggregated swim distance / check-in counts by time span. */
+export type AggrDistance = {
+  id: number
+  createdAt: string
+  userId: string
+  span: TimeSpan
+  start: string
+  end: string | null
+  distance: number
+  count: number
+  teamId: number | null
+  strokeDistances: Json
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -111,6 +126,16 @@ export type Database = {
         Update: Partial<Workout>
         Relationships: []
       }
+      aggr_distance: {
+        Row: AggrDistance
+        Insert: Partial<AggrDistance> &
+          Pick<
+            AggrDistance,
+            'userId' | 'span' | 'start' | 'distance' | 'count' | 'strokeDistances'
+          >
+        Update: Partial<AggrDistance>
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -121,6 +146,7 @@ export type Database = {
     Enums: {
       Role: Role
       Status: Status
+      TimeSpan: TimeSpan
     }
     CompositeTypes: {
       [_ in never]: never
