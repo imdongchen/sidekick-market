@@ -64,6 +64,7 @@ export function DesignMode({ initialDrafts, published }: Props) {
     setContent(draft.content)
     setMessage(null)
     setError(null)
+    setPreviewKey((k) => k + 1)
   }, [])
 
   useEffect(() => {
@@ -163,7 +164,16 @@ export function DesignMode({ initialDrafts, published }: Props) {
       return
     }
     run(async () => {
-      await saveDesignDraftAction({ id: activeId, name, content })
+      const saved = await saveDesignDraftAction({
+        id: activeId,
+        name,
+        content,
+      })
+      if ('error' in saved) {
+        setError(saved.error)
+        return
+      }
+      upsertDraft(saved.data)
       const result = await enableDesignPreviewAction(activeId)
       if ('error' in result) {
         setError(result.error)
@@ -171,7 +181,9 @@ export function DesignMode({ initialDrafts, published }: Props) {
       }
       setPreviewOn(true)
       setPreviewKey((k) => k + 1)
-      setMessage('Preview enabled — homepage shows this draft for your session.')
+      setMessage(
+        'Preview enabled — the iframe and / (this browser) show this draft.',
+      )
     })
   }
 
@@ -451,25 +463,33 @@ export function DesignMode({ initialDrafts, published }: Props) {
           <div>
             <h2 className="text-sm font-semibold text-zinc-950">Live preview</h2>
             <p className="text-xs text-zinc-500">
-              {previewOn
-                ? 'Session preview cookie is set — iframe shows the draft.'
-                : 'Enable Preview to load this draft on the real homepage.'}
+              {activeId
+                ? 'Iframe loads this draft via a staff-only preview link. Use Preview to also set a session cookie for /.'
+                : 'Create or select a draft to preview the homepage.'}
             </p>
           </div>
           <a
-            href="/"
+            href={
+              activeId
+                ? `/?preview=${encodeURIComponent(activeId)}`
+                : '/'
+            }
             target="_blank"
             rel="noreferrer"
             className="text-xs font-medium text-zinc-600 underline-offset-2 hover:underline"
           >
-            Open /
+            Open preview
           </a>
         </div>
         <div className="relative bg-zinc-100">
           <iframe
             key={previewKey}
             title="Marketing homepage preview"
-            src={previewOn ? `/?t=${previewKey}` : '/'}
+            src={
+              activeId
+                ? `/?preview=${encodeURIComponent(activeId)}&t=${previewKey}`
+                : '/'
+            }
             className="h-[min(80vh,52rem)] w-full border-0 bg-[#07131f]"
           />
         </div>
