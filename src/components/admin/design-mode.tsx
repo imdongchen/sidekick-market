@@ -54,6 +54,7 @@ export function DesignMode({ initialDrafts, published }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [previewOn, setPreviewOn] = useState(false)
   const [previewKey, setPreviewKey] = useState(0)
+  const [confirmDeploy, setConfirmDeploy] = useState(false)
   const [pending, startTransition] = useTransition()
 
   const active = drafts.find((d) => d.id === activeId) ?? null
@@ -201,10 +202,12 @@ export function DesignMode({ initialDrafts, published }: Props) {
       setError('Create a draft first.')
       return
     }
-    const ok = window.confirm(
-      'Commit this draft as the live homepage and deploy? Visitors will see the new copy after publish (and after Vercel deploy if GitHub commit is configured).',
-    )
-    if (!ok) return
+    setConfirmDeploy(true)
+  }
+
+  function confirmCommitDeploy() {
+    if (!activeId) return
+    setConfirmDeploy(false)
     run(async () => {
       const result = await commitAndDeployDesignAction({
         draftId: activeId,
@@ -442,6 +445,37 @@ export function DesignMode({ initialDrafts, published }: Props) {
               Commit & deploy
             </button>
           </div>
+
+          {confirmDeploy ? (
+            <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+              <p className="font-medium">Publish this draft as the live homepage?</p>
+              <p className="mt-1 text-emerald-900/80">
+                Visitors will see the new copy after publish
+                {process.env.NEXT_PUBLIC_VERCEL_ENV
+                  ? ' (and after Vercel deploy if GitHub commit is configured)'
+                  : ''}
+                .
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={confirmCommitDeploy}
+                  disabled={pending}
+                  className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+                >
+                  Yes, commit & deploy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeploy(false)}
+                  disabled={pending}
+                  className="rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-sm font-medium text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         {(message || error) && (
