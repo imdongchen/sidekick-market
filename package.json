@@ -16,6 +16,7 @@
     "@sanity/vision": "^3.52.2",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.86.2",
+    "ai": "^7.0.107",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.12",
     "feed": "^4.2.2",
@@ -27,7 +28,8 @@
     "react-dom": "^18",
     "react-use-measure": "^2.1.1",
     "resend": "^6.18.1",
-    "sanity": "^3.55.0"
+    "sanity": "^3.55.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^20",

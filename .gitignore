@@ -4,3 +4,6 @@ node_modules
 .env.local
 .env*.local
 tsconfig.tsbuildinfo
+
+# Local marketing design drafts (published homepage.json is committed)
+content/marketing/drafts/*.json

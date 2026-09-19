@@ -9,6 +9,7 @@ const nav = [
   { href: '/admin', label: 'Overview', exact: true },
   { href: '/admin/members', label: 'Members' },
   { href: '/admin/emails', label: 'Emails' },
+  { href: '/admin/design', label: 'Design' },
 ]
 
 export default async function AdminLayout({
@@ -24,7 +25,7 @@ export default async function AdminLayout({
       {demo && (
         <div className="bg-amber-100 px-4 py-2 text-center text-sm text-amber-950">
           Preview demo mode — fixture data only. Member edits and email sends
-          are no-ops.
+          are no-ops. Design drafts stay in this session.
         </div>
       )}
       <header className="border-b border-zinc-200 bg-white">
