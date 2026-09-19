@@ -450,11 +450,9 @@ export function DesignMode({ initialDrafts, published }: Props) {
             <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
               <p className="font-medium">Publish this draft as the live homepage?</p>
               <p className="mt-1 text-emerald-900/80">
-                Visitors will see the new copy after publish
-                {process.env.NEXT_PUBLIC_VERCEL_ENV
-                  ? ' (and after Vercel deploy if GitHub commit is configured)'
-                  : ''}
-                .
+                Visitors will see the new copy after publish. With GitHub
+                token configured, this also commits and triggers a Vercel
+                deploy.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
