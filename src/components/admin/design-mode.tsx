@@ -20,6 +20,12 @@ import {
   type FormEvent,
 } from 'react'
 
+const EXAMPLE_PROMPTS = [
+  'change the tagline to "Every lap, together"',
+  'change the tagline to "Built for the whole team"',
+  'Make it more energetic about masters swimming',
+] as const
+
 type Props = {
   initialDrafts: MarketingDraft[]
   published: HomepageContent
@@ -106,16 +112,21 @@ export function DesignMode({ initialDrafts, published }: Props) {
     })
   }
 
-  function onApplyPrompt(e: FormEvent) {
-    e.preventDefault()
+  function onApplyPrompt(e?: FormEvent) {
+    e?.preventDefault()
     if (!activeId) {
       setError('Create a draft first.')
+      return
+    }
+    const promptText = prompt.trim()
+    if (!promptText) {
+      setError('Enter a prompt describing the change you want.')
       return
     }
     run(async () => {
       const result = await applyDesignPromptAction({
         draftId: activeId,
-        prompt,
+        prompt: promptText,
         content,
       })
       if ('error' in result) {
@@ -136,6 +147,35 @@ export function DesignMode({ initialDrafts, published }: Props) {
         await enableDesignPreviewAction(activeId)
         setPreviewKey((k) => k + 1)
       }
+    })
+  }
+
+  function onExamplePrompt(example: string) {
+    if (!activeId) {
+      setError('Create a draft first.')
+      return
+    }
+    setPrompt(example)
+    run(async () => {
+      const result = await applyDesignPromptAction({
+        draftId: activeId,
+        prompt: example,
+        content,
+      })
+      if ('error' in result) {
+        setError(result.error)
+        return
+      }
+      upsertDraft(result.data.draft)
+      setContent(result.data.content)
+      setPrompt('')
+      setPreviewKey((k) => k + 1)
+      setMessage(
+        result.data.note ||
+          (result.data.source === 'ai'
+            ? 'Applied AI suggestion to the draft.'
+            : 'Applied heuristic edit to the draft.'),
+      )
     })
   }
 
@@ -320,9 +360,21 @@ export function DesignMode({ initialDrafts, published }: Props) {
         <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
           <h2 className="text-sm font-semibold text-zinc-950">Prompt</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Describe the change in plain language. Example: change the tagline
-            to &quot;Swim training, together&quot;
+            Describe the change in plain language, or pick an example below.
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {EXAMPLE_PROMPTS.map((example) => (
+              <button
+                key={example}
+                type="button"
+                onClick={() => onExamplePrompt(example)}
+                disabled={!activeId || pending}
+                className="rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+              >
+                {example}
+              </button>
+            ))}
+          </div>
           <form onSubmit={onApplyPrompt} className="mt-4 space-y-3">
             <textarea
               id="design-prompt"
