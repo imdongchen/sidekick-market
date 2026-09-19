@@ -155,6 +155,7 @@ export function DesignMode({ initialDrafts, published }: Props) {
         return
       }
       upsertDraft(result.data)
+      setPreviewKey((k) => k + 1)
       setMessage('Draft saved.')
     })
   }
@@ -324,6 +325,8 @@ export function DesignMode({ initialDrafts, published }: Props) {
           </p>
           <form onSubmit={onApplyPrompt} className="mt-4 space-y-3">
             <textarea
+              id="design-prompt"
+              name="design-prompt"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={3}
@@ -447,30 +450,42 @@ export function DesignMode({ initialDrafts, published }: Props) {
           </div>
 
           {confirmDeploy ? (
-            <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
-              <p className="font-medium">Publish this draft as the live homepage?</p>
-              <p className="mt-1 text-emerald-900/80">
-                Visitors will see the new copy after publish. With GitHub
-                token configured, this also commits and triggers a Vercel
-                deploy.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={confirmCommitDeploy}
-                  disabled={pending}
-                  className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="deploy-confirm-title"
+            >
+              <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg ring-1 ring-zinc-200">
+                <h3
+                  id="deploy-confirm-title"
+                  className="text-base font-semibold text-zinc-950"
                 >
-                  Yes, commit & deploy
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmDeploy(false)}
-                  disabled={pending}
-                  className="rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-sm font-medium text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
+                  Publish this draft as the live homepage?
+                </h3>
+                <p className="mt-2 text-sm text-zinc-600">
+                  Visitors will see the new copy after publish. With GitHub
+                  token configured, this also commits and triggers a Vercel
+                  deploy.
+                </p>
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeploy(false)}
+                    disabled={pending}
+                    className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmCommitDeploy}
+                    disabled={pending}
+                    className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+                  >
+                    Yes, commit & deploy
+                  </button>
+                </div>
               </div>
             </div>
           ) : null}
