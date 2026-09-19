@@ -58,7 +58,6 @@ export async function createDesignDraftAction(input?: {
     name: input?.name?.trim() || `Draft ${new Date().toLocaleString()}`,
     createdBy: staffLabel(staff.firstName, staff.lastName, staff.email),
   })
-  revalidatePath('/admin/design')
   return { success: true, data: draft }
 }
 
@@ -78,7 +77,6 @@ export async function saveDesignDraftAction(input: {
     status: 'draft',
   })
   if (!draft) return { error: 'Draft not found' }
-  revalidatePath('/admin/design')
   return { success: true, data: draft }
 }
 
@@ -120,7 +118,6 @@ export async function applyDesignPromptAction(input: {
   })
   if (!updated) return { error: 'Failed to update draft' }
 
-  revalidatePath('/admin/design')
   return {
     success: true,
     data: {
@@ -169,7 +166,6 @@ export async function deleteDesignDraftAction(
   }
   const ok = await deleteMarketingDraft(id)
   if (!ok) return { error: 'Draft not found' }
-  revalidatePath('/admin/design')
   return { success: true }
 }
 
