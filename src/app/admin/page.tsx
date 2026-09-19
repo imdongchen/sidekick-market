@@ -33,6 +33,13 @@ export default async function AdminHomePage() {
         'Draft new emails with Resend templates, send campaigns, and review delivery events.',
       stat: `${emailCount ?? 0} events`,
     },
+    {
+      href: '/admin/design',
+      title: 'Design mode',
+      description:
+        'Prompt changes to the marketing homepage, preview drafts, then commit and deploy.',
+      stat: 'Homepage',
+    },
   ]
 
   return (
@@ -44,7 +51,7 @@ export default async function AdminHomePage() {
         Signed in as {staff.firstName} ({staff.role}). Access is limited to your
         team by Supabase RLS.
       </p>
-      <ul className="mt-8 grid gap-4 sm:grid-cols-2">
+      <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {tools.map((tool) => (
           <li key={tool.href}>
             <Link
