@@ -11,8 +11,17 @@ export type EmailRecipient = Pick<
 
 type ProfileClient = SupabaseClient<Database>
 
+/**
+ * RFC 2606 / 6761 reserved domains never accept mail. Resend rejects the
+ * whole batch if any recipient uses one (e.g. seeded demo accounts).
+ */
+const RESERVED_DOMAIN_PATTERN =
+  /(^|\.)(example\.(com|net|org)|example|test|invalid|localhost)$/i
+
 function isValidEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false
+  const domain = email.slice(email.lastIndexOf('@') + 1)
+  return !RESERVED_DOMAIN_PATTERN.test(domain)
 }
 
 export async function resolveRecipients(
