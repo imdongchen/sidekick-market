@@ -16,6 +16,7 @@ import {
   parseReviewMonth,
   summarizeMonthlySwimStats,
 } from '@/lib/monthly-swim-stats'
+import type { RecipientFailure } from '@/lib/resend'
 import { requireStaff } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
 import { createServiceClient } from '@/supabase/service'
@@ -40,6 +41,7 @@ export type SendMonthlyReviewResult =
       scheduled: boolean
       scheduledAt?: string
       emailIds: string[]
+      failed?: RecipientFailure[]
     }
   | { error: string }
 
@@ -144,5 +146,6 @@ export async function sendMonthlyReviewCampaign(
     scheduled: result.scheduled,
     scheduledAt: result.scheduledAt,
     emailIds: result.emailIds,
+    failed: result.failed,
   }
 }

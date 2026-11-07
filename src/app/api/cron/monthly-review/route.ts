@@ -55,6 +55,7 @@ export async function GET(request: Request) {
       ok: true,
       month,
       queued: result.queued,
+      failed: result.failed,
       skipped: result.skipped ?? false,
       skippedRecipients: result.skippedRecipients ?? 0,
       reason: result.reason,

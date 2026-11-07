@@ -23,7 +23,14 @@ import {
   parseReviewMonth,
   summarizeMonthlySwimStats,
 } from '@/lib/monthly-swim-stats'
-import { getResendClient, getResendFrom, getResendReplyTo } from '@/lib/resend'
+import {
+  describeRecipientFailures,
+  getResendClient,
+  getResendFrom,
+  getResendReplyTo,
+  type RecipientFailure,
+  sendBatchPermissive,
+} from '@/lib/resend'
 import type { Database } from '@/types/database'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -52,6 +59,8 @@ export type DispatchMonthlyReviewResult =
       scheduled: boolean
       scheduledAt?: string
       emailIds: string[]
+      /** Recipients Resend rejected; everyone else was still sent */
+      failed: RecipientFailure[]
       /** Recipients skipped because they already got this month’s email */
       skippedRecipients?: number
       /** True when every intended recipient was already sent (nothing queued) */
@@ -198,6 +207,7 @@ export async function dispatchMonthlyReviewCampaign(
         queued: 0,
         scheduled: false,
         emailIds: [],
+        failed: [],
         skippedRecipients,
         skipped: true,
         reason: `All ${skippedRecipients} recipient${skippedRecipients === 1 ? '' : 's'} already received the ${parsed.isoMonth} monthly review.`,
@@ -227,6 +237,8 @@ export async function dispatchMonthlyReviewCampaign(
   const from = getResendFrom()
   const replyTo = getResendReplyTo()
   const emailIds: string[] = []
+  const failures: RecipientFailure[] = []
+  let sentCount = 0
   const attempted = recipients.length
 
   const baseSummary = (): Omit<
@@ -278,34 +290,36 @@ export async function dispatchMonthlyReviewCampaign(
         }
       })
 
-      const { data, error } = await resend.batch.send(payload)
-      if (error) {
-        const message =
-          emailIds.length > 0
-            ? `Partially sent (${emailIds.length} queued${skippedRecipients ? `, ${skippedRecipients} already sent` : ''}), then failed: ${error.message}`
-            : error.message
-        await sendMonthlyReviewAdminSummary({
-          ...baseSummary(),
-          succeeded: emailIds.length,
-          failed: attempted - emailIds.length,
-          error: message,
-        })
-        return { error: message }
+      const result = await sendBatchPermissive(resend, payload)
+      if ('error' in result) {
+        failures.push(
+          ...chunk.map((recipient) => ({
+            email: recipient.email.trim().toLowerCase(),
+            message: result.error,
+          })),
+        )
+        continue
       }
 
-      const ids = (data?.data ?? [])
-        .map((item) => item.id)
-        .filter((id): id is string => !!id)
-      emailIds.push(...ids)
+      for (const { index, message } of result.failed) {
+        const recipient = chunk[index]
+        if (recipient) {
+          failures.push({ email: recipient.email.trim().toLowerCase(), message })
+        }
+      }
+      sentCount += result.sent.length
 
       const now = new Date().toISOString()
-      const rows = chunk.map((recipient, index) => {
+      const rows = result.sent.flatMap(({ index, id }) => {
+        const recipient = chunk[index]
+        if (!recipient) return []
+        if (id) emailIds.push(id)
         const userStats = recipient.userId
           ? stats.byUser.get(recipient.userId)
           : undefined
         const userCheckIns = userStats?.checkIns ?? 0
         return {
-          emailId: ids[index] ?? `pending-${recipient.id}-${Date.now()}`,
+          emailId: id ?? `pending-${recipient.id}-${Date.now()}`,
           recipientEmail: recipient.email.trim().toLowerCase(),
           eventType: scheduledAt ? 'email.scheduled' : 'email.sent',
           timestamp: scheduledAt ?? now,
@@ -327,7 +341,9 @@ export async function dispatchMonthlyReviewCampaign(
           },
         }
       })
-      await supabase.from('email_tracking').insert(rows)
+      if (rows.length > 0) {
+        await supabase.from('email_tracking').insert(rows)
+      }
     }
   } catch (err) {
     const message =
@@ -336,26 +352,33 @@ export async function dispatchMonthlyReviewCampaign(
         : 'Failed to send emails via Resend.'
     await sendMonthlyReviewAdminSummary({
       ...baseSummary(),
-      succeeded: emailIds.length,
-      failed: attempted - emailIds.length,
+      succeeded: sentCount,
+      failed: attempted - sentCount,
       error: message,
     })
     return { error: message }
   }
 
-  const succeeded = emailIds.length || recipients.length
+  const failureMessage =
+    failures.length > 0 ? describeRecipientFailures(failures) : undefined
   await sendMonthlyReviewAdminSummary({
     ...baseSummary(),
-    succeeded,
-    failed: 0,
+    succeeded: sentCount,
+    failed: failures.length,
+    error: failureMessage,
   })
+
+  if (sentCount === 0 && failureMessage) {
+    return { error: failureMessage }
+  }
 
   return {
     success: true,
-    queued: succeeded,
+    queued: sentCount,
     scheduled: !!scheduledAt,
     scheduledAt,
     emailIds,
+    failed: failures,
     skippedRecipients,
   }
 }

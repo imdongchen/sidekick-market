@@ -701,6 +701,12 @@ export function EmailDraftComposer({
                 : `Queued ${sendResult.queued} email${sendResult.queued === 1 ? '' : 's'} with Resend.`}
             </p>
           )}
+          {sendResult && 'success' in sendResult && !!sendResult.failed?.length && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {sendResult.failed.length} not sent:{' '}
+              {sendResult.failed.map((f) => `${f.email} (${f.message})`).join('; ')}
+            </p>
+          )}
         </div>
       </section>
 

@@ -91,7 +91,9 @@ export function monthlyReviewAdminSummarySubject(
   summary: MonthlyReviewSendSummary,
 ) {
   const outcome = summary.error
-    ? 'partial failure'
+    ? summary.succeeded === 0
+      ? 'failed'
+      : 'partial failure'
     : summary.succeeded === 0 && summary.attempted === 0
       ? 'nothing to send'
       : 'ok'

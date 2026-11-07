@@ -11,7 +11,14 @@ import {
   REINTRODUCE_SUBJECT,
 } from '@/lib/emails/reintroduce-sidekick'
 import { loadReintroduceHtml } from '@/lib/emails/reintroduce-sidekick.server'
-import { getResendClient, getResendFrom, getResendReplyTo } from '@/lib/resend'
+import {
+  describeRecipientFailures,
+  getResendClient,
+  getResendFrom,
+  getResendReplyTo,
+  type RecipientFailure,
+  sendBatchPermissive,
+} from '@/lib/resend'
 import { requireStaff } from '@/supabase/auth'
 import { createClient } from '@/supabase/server'
 import { revalidatePath } from 'next/cache'
@@ -35,6 +42,7 @@ export type SendReintroduceResult =
       scheduled: boolean
       scheduledAt?: string
       emailIds: string[]
+      failed?: RecipientFailure[]
     }
   | { error: string }
 
@@ -111,6 +119,8 @@ export async function sendReintroduceCampaign(
   const from = getResendFrom()
   const replyTo = getResendReplyTo()
   const emailIds: string[] = []
+  const failures: RecipientFailure[] = []
+  let sentCount = 0
 
   try {
     for (let i = 0; i < resolved.recipients.length; i += BATCH_SIZE) {
@@ -135,57 +145,75 @@ export async function sendReintroduceCampaign(
         }
       })
 
-      const { data, error } = await resend.batch.send(payload)
-      if (error) {
-        return {
-          error:
-            emailIds.length > 0
-              ? `Partially sent (${emailIds.length} queued), then failed: ${error.message}`
-              : error.message,
-        }
+      const result = await sendBatchPermissive(resend, payload)
+      if ('error' in result) {
+        failures.push(
+          ...chunk.map((recipient) => ({
+            email: recipient.email.trim().toLowerCase(),
+            message: result.error,
+          })),
+        )
+        continue
       }
 
-      const ids = (data?.data ?? [])
-        .map((item) => item.id)
-        .filter((id): id is string => !!id)
-      emailIds.push(...ids)
+      for (const { index, message } of result.failed) {
+        const recipient = chunk[index]
+        if (recipient) {
+          failures.push({ email: recipient.email.trim().toLowerCase(), message })
+        }
+      }
+      sentCount += result.sent.length
 
       // Best-effort local tracking so the admin table updates before webhooks.
       const supabase = createClient()
       const now = new Date().toISOString()
-      const rows = chunk.map((recipient, index) => ({
-        emailId: ids[index] ?? `pending-${recipient.id}-${Date.now()}`,
-        recipientEmail: recipient.email.trim().toLowerCase(),
-        eventType: scheduledAt ? 'email.scheduled' : 'email.sent',
-        timestamp: scheduledAt ?? now,
-        userId: recipient.userId,
-        year: null,
-        metadata: {
-          campaign: REINTRODUCE_CAMPAIGN,
-          audience: input.audience,
-          scheduledAt: scheduledAt ?? null,
-          subject: REINTRODUCE_SUBJECT,
-        },
-      }))
-      await supabase.from('email_tracking').insert(rows)
+      const rows = result.sent.flatMap(({ index, id }) => {
+        const recipient = chunk[index]
+        if (!recipient) return []
+        if (id) emailIds.push(id)
+        return {
+          emailId: id ?? `pending-${recipient.id}-${Date.now()}`,
+          recipientEmail: recipient.email.trim().toLowerCase(),
+          eventType: scheduledAt ? 'email.scheduled' : 'email.sent',
+          timestamp: scheduledAt ?? now,
+          userId: recipient.userId,
+          year: null,
+          metadata: {
+            campaign: REINTRODUCE_CAMPAIGN,
+            audience: input.audience,
+            scheduledAt: scheduledAt ?? null,
+            subject: REINTRODUCE_SUBJECT,
+          },
+        }
+      })
+      if (rows.length > 0) {
+        await supabase.from('email_tracking').insert(rows)
+      }
     }
   } catch (err) {
+    const message =
+      err instanceof Error ? err.message : 'Failed to send emails via Resend.'
     return {
       error:
-        err instanceof Error
-          ? err.message
-          : 'Failed to send emails via Resend.',
+        sentCount > 0
+          ? `Partially sent (${sentCount} queued), then failed: ${message}`
+          : message,
     }
   }
 
   revalidatePath('/admin/emails')
   revalidatePath('/admin')
 
+  if (sentCount === 0 && failures.length > 0) {
+    return { error: describeRecipientFailures(failures) }
+  }
+
   return {
     success: true,
-    queued: emailIds.length || resolved.recipients.length,
+    queued: sentCount,
     scheduled: !!scheduledAt,
     scheduledAt,
     emailIds,
+    failed: failures,
   }
 }

@@ -451,6 +451,12 @@ export function MonthlyReviewComposer({
                   : `Queued ${result.queued} email${result.queued === 1 ? '' : 's'} with Resend.`}
               </p>
             )}
+            {result && 'success' in result && !!result.failed?.length && (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {result.failed.length} not sent:{' '}
+                {result.failed.map((f) => `${f.email} (${f.message})`).join('; ')}
+              </p>
+            )}
           </div>
 
           <div className="bg-zinc-50 p-4 sm:p-5">
