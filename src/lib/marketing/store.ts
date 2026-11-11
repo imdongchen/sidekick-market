@@ -41,15 +41,38 @@ export type PublishedMarketingPage = {
   publishedAt: string
 }
 
-const CONTENT_DIR = path.join(process.cwd(), 'content', 'marketing')
-const HOME_PUBLISHED_PATH = path.join(CONTENT_DIR, 'homepage.json')
-const PAGES_DIR = path.join(CONTENT_DIR, 'pages')
-const DRAFTS_DIR = path.join(CONTENT_DIR, 'drafts')
+/** Committed content (read-only on Vercel). */
+const REPO_CONTENT_DIR = path.join(process.cwd(), 'content', 'marketing')
+const HOME_PUBLISHED_PATH = path.join(REPO_CONTENT_DIR, 'homepage.json')
+const REPO_PAGES_DIR = path.join(REPO_CONTENT_DIR, 'pages')
+
+/**
+ * Writable runtime dir for drafts / unpublished pages.
+ * On Vercel the repo FS is read-only — use /tmp. Locally prefer repo drafts/.
+ */
+function runtimeDataRoot(): string {
+  if (process.env.VERCEL || process.env.SIDEKICK_MARKETING_DATA_DIR) {
+    return (
+      process.env.SIDEKICK_MARKETING_DATA_DIR ||
+      path.join('/tmp', 'sidekick-marketing')
+    )
+  }
+  return REPO_CONTENT_DIR
+}
+
+function draftsDir() {
+  return path.join(runtimeDataRoot(), 'drafts')
+}
+
+function runtimePagesDir() {
+  return path.join(runtimeDataRoot(), 'pages')
+}
 
 type MemoryState = {
   pages: Map<string, PublishedMarketingPage>
   drafts: Map<string, MarketingDraft>
   seeded: boolean
+  diskWritable: boolean | null
 }
 
 declare global {
@@ -63,20 +86,59 @@ function memory(): MemoryState {
       pages: new Map(),
       drafts: new Map(),
       seeded: false,
+      diskWritable: null,
     }
   }
   return globalThis.__sidekickMarketingStore
 }
 
-async function ensureDirs() {
-  await fs.mkdir(DRAFTS_DIR, { recursive: true })
-  await fs.mkdir(PAGES_DIR, { recursive: true })
+async function ensureRuntimeDirs() {
+  await fs.mkdir(draftsDir(), { recursive: true })
+  await fs.mkdir(runtimePagesDir(), { recursive: true })
 }
 
-function publishedFilePath(slug: string) {
+async function probeDiskWritable(): Promise<boolean> {
+  const state = memory()
+  if (state.diskWritable !== null) return state.diskWritable
+  try {
+    await ensureRuntimeDirs()
+    const probe = path.join(draftsDir(), `.write-probe-${process.pid}`)
+    await fs.writeFile(probe, 'ok')
+    await fs.unlink(probe)
+    state.diskWritable = true
+  } catch {
+    state.diskWritable = false
+  }
+  return state.diskWritable
+}
+
+/** Never throw — marketing edits must work even when the FS is read-only. */
+async function safeWriteFile(filePath: string, contents: string) {
+  try {
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.writeFile(filePath, contents, 'utf8')
+    return true
+  } catch (err) {
+    console.warn(
+      '[marketing-store] write failed (continuing in memory):',
+      filePath,
+      err instanceof Error ? err.message : err,
+    )
+    memory().diskWritable = false
+    return false
+  }
+}
+
+function publishedRepoFilePath(slug: string) {
   return slug === HOME_PAGE_SLUG
     ? HOME_PUBLISHED_PATH
-    : path.join(PAGES_DIR, `${slug}.json`)
+    : path.join(REPO_PAGES_DIR, `${slug}.json`)
+}
+
+function publishedRuntimeFilePath(slug: string) {
+  return slug === HOME_PAGE_SLUG
+    ? path.join(runtimeDataRoot(), 'homepage.json')
+    : path.join(runtimePagesDir(), `${slug}.json`)
 }
 
 function defaultPageTitle(slug: string) {
@@ -87,17 +149,28 @@ function defaultPageTitle(slug: string) {
     .join(' ')
 }
 
-async function readPublishedPageFromDisk(
+function pagePayload(page: PublishedMarketingPage) {
+  return page.slug === HOME_PAGE_SLUG
+    ? page.content
+    : {
+        title: page.title,
+        content: page.content,
+        updatedAt: page.updatedAt,
+        publishedAt: page.publishedAt,
+      }
+}
+
+async function readPageJson(
+  filePath: string,
   slug: string,
 ): Promise<PublishedMarketingPage | null> {
   try {
-    const raw = await fs.readFile(publishedFilePath(slug), 'utf8')
+    const raw = await fs.readFile(filePath, 'utf8')
     const parsed = JSON.parse(raw) as {
       title?: string
       content?: unknown
       updatedAt?: string
       publishedAt?: string
-      // legacy homepage.json was bare content
       brand?: string
     }
     const content = parseHomepageContent(
@@ -116,59 +189,63 @@ async function readPublishedPageFromDisk(
   }
 }
 
-async function writePublishedPageToDisk(page: PublishedMarketingPage) {
-  await ensureDirs()
-  const payload =
-    page.slug === HOME_PAGE_SLUG
-      ? // Keep homepage.json as bare content for backward compatibility
-        page.content
-      : {
-          title: page.title,
-          content: page.content,
-          updatedAt: page.updatedAt,
-          publishedAt: page.publishedAt,
-        }
-  await fs.writeFile(
-    publishedFilePath(page.slug),
-    `${JSON.stringify(payload, null, 2)}\n`,
-    'utf8',
+async function readPublishedPageFromDisk(
+  slug: string,
+): Promise<PublishedMarketingPage | null> {
+  // Prefer runtime overlay (session publishes on read-only hosts), then repo.
+  return (
+    (await readPageJson(publishedRuntimeFilePath(slug), slug)) ??
+    (await readPageJson(publishedRepoFilePath(slug), slug))
   )
 }
 
+async function writePublishedPageToDisk(page: PublishedMarketingPage) {
+  // Always try runtime (writable). Also try repo path for local commits.
+  const payload = `${JSON.stringify(pagePayload(page), null, 2)}\n`
+  await safeWriteFile(publishedRuntimeFilePath(page.slug), payload)
+  if (!process.env.VERCEL) {
+    await safeWriteFile(publishedRepoFilePath(page.slug), payload)
+  }
+}
+
 async function writeDraftToDisk(draft: MarketingDraft) {
-  if (isAdminDemoMode()) return
-  await ensureDirs()
-  const file = path.join(DRAFTS_DIR, `${draft.id}.json`)
-  await fs.writeFile(file, `${JSON.stringify(draft, null, 2)}\n`, 'utf8')
+  // Always attempt a safe write (repo drafts/ locally, /tmp on Vercel).
+  // Never throw — demo and read-only hosts continue in memory.
+  const file = path.join(draftsDir(), `${draft.id}.json`)
+  await safeWriteFile(file, `${JSON.stringify(draft, null, 2)}\n`)
 }
 
 async function deleteDraftFromDisk(id: string) {
-  if (isAdminDemoMode()) return
   try {
-    await fs.unlink(path.join(DRAFTS_DIR, `${id}.json`))
+    await fs.unlink(path.join(draftsDir(), `${id}.json`))
   } catch {
     // ignore
   }
 }
 
 async function deletePublishedPageFromDisk(slug: string) {
-  if (isAdminDemoMode() || slug === HOME_PAGE_SLUG) return
-  try {
-    await fs.unlink(publishedFilePath(slug))
-  } catch {
-    // ignore
+  if (slug === HOME_PAGE_SLUG) return
+  for (const file of [
+    publishedRuntimeFilePath(slug),
+    publishedRepoFilePath(slug),
+  ]) {
+    try {
+      await fs.unlink(file)
+    } catch {
+      // ignore
+    }
   }
 }
 
 async function loadDraftsFromDisk(): Promise<MarketingDraft[]> {
   try {
-    await ensureDirs()
-    const names = await fs.readdir(DRAFTS_DIR)
+    await ensureRuntimeDirs()
+    const names = await fs.readdir(draftsDir())
     const drafts: MarketingDraft[] = []
     for (const name of names) {
-      if (!name.endsWith('.json')) continue
+      if (!name.endsWith('.json') || name.startsWith('.')) continue
       try {
-        const raw = await fs.readFile(path.join(DRAFTS_DIR, name), 'utf8')
+        const raw = await fs.readFile(path.join(draftsDir(), name), 'utf8')
         const parsed = JSON.parse(raw) as MarketingDraft
         if (parsed?.id && parsed?.content) {
           drafts.push({
@@ -187,15 +264,16 @@ async function loadDraftsFromDisk(): Promise<MarketingDraft[]> {
   }
 }
 
-async function loadCustomPagesFromDisk(): Promise<PublishedMarketingPage[]> {
+async function loadPagesFromDir(
+  dir: string,
+): Promise<PublishedMarketingPage[]> {
   try {
-    await ensureDirs()
-    const names = await fs.readdir(PAGES_DIR)
+    const names = await fs.readdir(dir)
     const pages: PublishedMarketingPage[] = []
     for (const name of names) {
       if (!name.endsWith('.json')) continue
       const slug = name.replace(/\.json$/, '')
-      const page = await readPublishedPageFromDisk(slug)
+      const page = await readPageJson(path.join(dir, name), slug)
       if (page) pages.push(page)
     }
     return pages
@@ -207,6 +285,8 @@ async function loadCustomPagesFromDisk(): Promise<PublishedMarketingPage[]> {
 async function seedMemoryIfNeeded() {
   const state = memory()
   if (state.seeded) return
+
+  await probeDiskWritable()
 
   const home =
     (await readPublishedPageFromDisk(HOME_PAGE_SLUG)) ??
@@ -220,15 +300,18 @@ async function seedMemoryIfNeeded() {
 
   state.pages.set(HOME_PAGE_SLUG, home)
 
-  for (const page of await loadCustomPagesFromDisk()) {
+  for (const page of await loadPagesFromDir(REPO_PAGES_DIR)) {
+    state.pages.set(page.slug, page)
+  }
+  // Runtime overlays win (includes unpublished shells + session publishes)
+  for (const page of await loadPagesFromDir(runtimePagesDir())) {
     state.pages.set(page.slug, page)
   }
 
-  if (!isAdminDemoMode()) {
-    for (const draft of await loadDraftsFromDisk()) {
-      state.drafts.set(draft.id, draft)
-    }
+  for (const draft of await loadDraftsFromDisk()) {
+    state.drafts.set(draft.id, draft)
   }
+
   state.seeded = true
 }
 
@@ -321,30 +404,19 @@ export async function createMarketingPage(input: {
   }
 
   const title = input.title.trim() || defaultPageTitle(valid.slug)
+  if (title.length > 160) {
+    return { error: 'Title is too long (max 160 characters).' }
+  }
+
   const now = new Date().toISOString()
-  const content = input.content
-    ? parseHomepageContent(input.content)
-    : {
-        ...DEFAULT_HOMEPAGE_CONTENT,
-        tagline: title,
-        metaDescription: `${title} — Sidekick swim app for teams.`,
-      }
+  const content = parseHomepageContent(
+    input.content ?? {
+      ...DEFAULT_HOMEPAGE_CONTENT,
+      tagline: title.slice(0, 160),
+      metaDescription: `${title} — Sidekick swim app for teams.`.slice(0, 300),
+    },
+  )
 
-  // Register the page shell immediately so it appears in the page list;
-  // first commit publishes content. Until then public route 404s if empty?
-  // Better: only create a draft, and page appears in "pages" list as unpublished.
-  // Simpler UX: create draft tied to new slug; on publish, page goes live.
-  // Track unpublished pages in memory as drafts-only until first publish.
-
-  const draft = await createMarketingDraft({
-    name: `${title} — first draft`,
-    pageSlug: valid.slug,
-    content,
-    createdBy: input.createdBy,
-  })
-
-  // Placeholder published entry so the page shows in the admin page picker.
-  // Not written to disk until first publish — public route checks publishedAt / disk.
   const page: PublishedMarketingPage = {
     slug: valid.slug,
     title,
@@ -352,7 +424,18 @@ export async function createMarketingPage(input: {
     updatedAt: now,
     publishedAt: '', // empty = not live yet
   }
+
+  // Register page before draft so a draft write failure cannot leave us
+  // without a page entry.
   memory().pages.set(valid.slug, page)
+  await writePublishedPageToDisk(page)
+
+  const draft = await createMarketingDraft({
+    name: `${title} — first draft`,
+    pageSlug: valid.slug,
+    content,
+    createdBy: input.createdBy,
+  })
 
   return { draft, page }
 }
@@ -420,10 +503,7 @@ export async function publishMarketingDraft(
     publishedAt: now,
   }
   memory().pages.set(draft.pageSlug, page)
-
-  if (!isAdminDemoMode()) {
-    await writePublishedPageToDisk(page)
-  }
+  await writePublishedPageToDisk(page)
 
   const next: MarketingDraft = {
     ...draft,
@@ -451,7 +531,7 @@ export function getPublishedHomepagePath() {
 }
 
 export function getPublishedPageRelativePath(slug: string) {
-  const abs = publishedFilePath(slug)
+  const abs = publishedRepoFilePath(slug)
   return abs.replace(`${process.cwd()}/`, '')
 }
 
@@ -466,8 +546,7 @@ export async function deleteMarketingPage(
     return { error: 'Page not found' }
   }
   memory().pages.delete(slug)
-  // Remove drafts for this page
-  for (const [id, draft] of memory().drafts) {
+  for (const [id, draft] of [...memory().drafts]) {
     if (draft.pageSlug === slug) {
       memory().drafts.delete(id)
       await deleteDraftFromDisk(id)
@@ -475,4 +554,9 @@ export async function deleteMarketingPage(
   }
   await deletePublishedPageFromDisk(slug)
   return { ok: true }
+}
+
+export async function marketingDiskWritable(): Promise<boolean> {
+  await seedMemoryIfNeeded()
+  return memory().diskWritable ?? false
 }

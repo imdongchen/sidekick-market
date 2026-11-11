@@ -70,15 +70,25 @@ export async function createDesignDraftAction(input?: {
   pageSlug?: string
   content?: HomepageContent
 }): Promise<DesignActionResult<MarketingDraft>> {
-  const staff = await requireStaff()
-  const pageSlug = input?.pageSlug || HOME_PAGE_SLUG
-  const draft = await createMarketingDraft({
-    name: input?.name?.trim() || `Draft ${new Date().toLocaleString()}`,
-    pageSlug,
-    content: input?.content,
-    createdBy: staffLabel(staff.firstName, staff.lastName, staff.email),
-  })
-  return { success: true, data: draft }
+  try {
+    const staff = await requireStaff()
+    const pageSlug = input?.pageSlug || HOME_PAGE_SLUG
+    const draft = await createMarketingDraft({
+      name: input?.name?.trim() || `Draft ${new Date().toLocaleString()}`,
+      pageSlug,
+      content: input?.content,
+      createdBy: staffLabel(staff.firstName, staff.lastName, staff.email),
+    })
+    return { success: true, data: draft }
+  } catch (err) {
+    console.error('[createDesignDraftAction]', err)
+    return {
+      error:
+        err instanceof Error
+          ? `Could not create draft: ${err.message}`
+          : 'Could not create draft. Try again.',
+    }
+  }
 }
 
 export async function createDesignPageAction(input: {
@@ -87,18 +97,35 @@ export async function createDesignPageAction(input: {
 }): Promise<
   DesignActionResult<{ draft: MarketingDraft; page: PublishedMarketingPage }>
 > {
-  const staff = await requireStaff()
-  const title = input.title.trim()
-  if (!title) return { error: 'Enter a page title.' }
+  try {
+    const staff = await requireStaff()
+    const title = input.title.trim()
+    if (!title) return { error: 'Enter a page title.' }
 
-  const slug = (input.slug?.trim() || slugifyPageTitle(title)).toLowerCase()
-  const result = await createMarketingPage({
-    slug,
-    title,
-    createdBy: staffLabel(staff.firstName, staff.lastName, staff.email),
-  })
-  if ('error' in result) return { error: result.error }
-  return { success: true, data: result }
+    const slug = (input.slug?.trim() || slugifyPageTitle(title)).toLowerCase()
+    if (!slug) {
+      return {
+        error:
+          'Could not build a URL slug from that title. Enter a slug like “summer-camp”.',
+      }
+    }
+
+    const result = await createMarketingPage({
+      slug,
+      title,
+      createdBy: staffLabel(staff.firstName, staff.lastName, staff.email),
+    })
+    if ('error' in result) return { error: result.error }
+    return { success: true, data: result }
+  } catch (err) {
+    console.error('[createDesignPageAction]', err)
+    return {
+      error:
+        err instanceof Error
+          ? `Could not create page: ${err.message}`
+          : 'Could not create page. Try again.',
+    }
+  }
 }
 
 export async function deleteDesignPageAction(

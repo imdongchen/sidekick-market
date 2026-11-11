@@ -1,0 +1,33 @@
+{
+  "title": "Meet Day mwciqw8y",
+  "content": {
+    "brand": "Sidekick",
+    "tagline": "Meet Day mwciqw8y",
+    "body": "Track workouts together, share the schedule, and keep every swimmer in the loop.",
+    "appStoreUrl": "https://apps.apple.com/us/app/sidekick-swim-app-for-teams/id6677036644",
+    "androidNote": "Android — coming soon",
+    "contactPrompt": "Questions?",
+    "contactEmail": "admin@sidekickswim.com",
+    "metaDescription": "Meet Day mwciqw8y — Sidekick swim app for teams.",
+    "adminLoginLabel": "Admin login",
+    "previews": [
+      {
+        "id": "feed",
+        "src": "/screenshots/appstore_preview_feed.png",
+        "alt": "Team feed — check-ins, stats, and personal records"
+      },
+      {
+        "id": "schedule",
+        "src": "/screenshots/appstore_preview_schedule.png",
+        "alt": "Team schedule — practices and workout planning"
+      },
+      {
+        "id": "profile",
+        "src": "/screenshots/appstore_preview_profile.png",
+        "alt": "Profile — monthly, yearly, and lifetime swim stats"
+      }
+    ]
+  },
+  "updatedAt": "2026-11-11T19:35:27.956Z",
+  "publishedAt": "2026-11-11T19:35:27.956Z"
+}

@@ -166,7 +166,18 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
     setError(null)
     setMessage(null)
     startTransition(() => {
-      void action()
+      void (async () => {
+        try {
+          await action()
+        } catch (err) {
+          console.error('[design-mode]', err)
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Something went wrong. Try again.',
+          )
+        }
+      })()
     })
   }
 
@@ -189,6 +200,14 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       setName(result.data.name)
       setContent(result.data.content)
       return result.data.id
+    } catch (err) {
+      console.error('[design-mode] ensureDraft', err)
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not create a draft. Try again.',
+      )
+      return null
     } finally {
       setEnsuringDraft(false)
     }
