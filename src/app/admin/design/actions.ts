@@ -1,10 +1,12 @@
 'use server'
 
-import { isAdminDemoMode } from '@/lib/admin-demo-server'
 import { generateHomepageFromPrompt } from '@/lib/marketing/generate'
-import { commitHomepagePublish } from '@/lib/marketing/github-commit'
+import { commitPagePublish } from '@/lib/marketing/github-commit'
 import {
+  HOME_PAGE_SLUG,
   homepageContentSchema,
+  publicPathForSlug,
+  slugifyPageTitle,
   type HomepageContent,
 } from '@/lib/marketing/homepage-schema'
 import {
@@ -13,13 +15,19 @@ import {
 } from '@/lib/marketing/preview'
 import {
   createMarketingDraft,
+  createMarketingPage,
   deleteMarketingDraft,
+  deleteMarketingPage,
   getMarketingDraft,
   getPublishedHomepage,
+  getPublishedPage,
+  isPageLive,
   listMarketingDrafts,
+  listPublishedPages,
   publishMarketingDraft,
   updateMarketingDraft,
   type MarketingDraft,
+  type PublishedMarketingPage,
 } from '@/lib/marketing/store'
 import { requireStaff } from '@/supabase/auth'
 import { revalidatePath } from 'next/cache'
@@ -34,11 +42,18 @@ function staffLabel(firstName: string, lastName: string, email: string) {
   return name || email
 }
 
-export async function listDesignDraftsAction(): Promise<
-  DesignActionResult<MarketingDraft[]>
+export async function listDesignPagesAction(): Promise<
+  DesignActionResult<PublishedMarketingPage[]>
 > {
   await requireStaff()
-  const drafts = await listMarketingDrafts()
+  return { success: true, data: await listPublishedPages() }
+}
+
+export async function listDesignDraftsAction(
+  pageSlug?: string,
+): Promise<DesignActionResult<MarketingDraft[]>> {
+  await requireStaff()
+  const drafts = await listMarketingDrafts(pageSlug)
   return { success: true, data: drafts }
 }
 
@@ -52,13 +67,49 @@ export async function getPublishedContentAction(): Promise<
 
 export async function createDesignDraftAction(input?: {
   name?: string
+  pageSlug?: string
+  content?: HomepageContent
 }): Promise<DesignActionResult<MarketingDraft>> {
   const staff = await requireStaff()
+  const pageSlug = input?.pageSlug || HOME_PAGE_SLUG
   const draft = await createMarketingDraft({
     name: input?.name?.trim() || `Draft ${new Date().toLocaleString()}`,
+    pageSlug,
+    content: input?.content,
     createdBy: staffLabel(staff.firstName, staff.lastName, staff.email),
   })
   return { success: true, data: draft }
+}
+
+export async function createDesignPageAction(input: {
+  title: string
+  slug?: string
+}): Promise<
+  DesignActionResult<{ draft: MarketingDraft; page: PublishedMarketingPage }>
+> {
+  const staff = await requireStaff()
+  const title = input.title.trim()
+  if (!title) return { error: 'Enter a page title.' }
+
+  const slug = (input.slug?.trim() || slugifyPageTitle(title)).toLowerCase()
+  const result = await createMarketingPage({
+    slug,
+    title,
+    createdBy: staffLabel(staff.firstName, staff.lastName, staff.email),
+  })
+  if ('error' in result) return { error: result.error }
+  return { success: true, data: result }
+}
+
+export async function deleteDesignPageAction(
+  slug: string,
+): Promise<DesignActionResult> {
+  await requireStaff()
+  const result = await deleteMarketingPage(slug)
+  if ('error' in result) return { error: result.error }
+  revalidatePath('/admin/design')
+  revalidatePath(publicPathForSlug(slug))
+  return { success: true }
 }
 
 export async function saveDesignDraftAction(input: {
@@ -141,7 +192,11 @@ export async function enableDesignPreviewAction(
     draftId,
     marketingPreviewCookieOptions(process.env.VERCEL === '1'),
   )
-  return { success: true, data: { previewPath: '/' } }
+  const base = publicPathForSlug(draft.pageSlug)
+  return {
+    success: true,
+    data: { previewPath: `${base}?preview=${encodeURIComponent(draftId)}` },
+  }
 }
 
 export async function clearDesignPreviewAction(): Promise<DesignActionResult> {
@@ -176,7 +231,9 @@ export async function commitAndDeployDesignAction(input: {
 }): Promise<
   DesignActionResult<{
     draft: MarketingDraft
-    deploy: Awaited<ReturnType<typeof commitHomepagePublish>>
+    page: PublishedMarketingPage
+    publicPath: string
+    deploy: Awaited<ReturnType<typeof commitPagePublish>>
   }>
 > {
   await requireStaff()
@@ -199,35 +256,46 @@ export async function commitAndDeployDesignAction(input: {
   const published = await publishMarketingDraft(input.draftId)
   if (!published) return { error: 'Failed to publish draft' }
 
-  const deploy = await commitHomepagePublish(
-    published.content,
-    `marketing: publish homepage (${published.draft.name})`,
+  const deploy = await commitPagePublish(
+    published.page,
+    `marketing: publish ${published.page.slug} (${published.draft.name})`,
   )
 
   if ('error' in deploy) {
     return { error: deploy.error }
   }
 
-  // Clear preview so public sees live content
   cookies().set(MARKETING_PREVIEW_COOKIE, '', {
     ...marketingPreviewCookieOptions(process.env.VERCEL === '1'),
     maxAge: 0,
   })
 
   revalidatePath('/')
+  revalidatePath(published.publicPath)
   revalidatePath('/admin/design')
 
-  const demo = isAdminDemoMode()
   return {
     success: true,
     data: {
       draft: published.draft,
-      deploy: {
-        ...deploy,
-        message: demo
-          ? deploy.message
-          : deploy.message,
-      },
+      page: published.page,
+      publicPath: published.publicPath,
+      deploy,
+    },
+  }
+}
+
+export async function getPageLiveStatusAction(
+  slug: string,
+): Promise<DesignActionResult<{ live: boolean; path: string }>> {
+  await requireStaff()
+  const page = await getPublishedPage(slug)
+  if (!page) return { error: 'Page not found' }
+  return {
+    success: true,
+    data: {
+      live: await isPageLive(slug),
+      path: publicPathForSlug(slug),
     },
   }
 }

@@ -5,16 +5,27 @@ import {
   clearDesignPreviewAction,
   commitAndDeployDesignAction,
   createDesignDraftAction,
+  createDesignPageAction,
   deleteDesignDraftAction,
+  deleteDesignPageAction,
   enableDesignPreviewAction,
   saveDesignDraftAction,
 } from '@/app/admin/design/actions'
-import type { HomepageContent } from '@/lib/marketing/homepage-schema'
-import type { MarketingDraft } from '@/lib/marketing/store'
+import {
+  DEFAULT_HOMEPAGE_CONTENT,
+  HOME_PAGE_SLUG,
+  publicPathForSlug,
+  slugifyPageTitle,
+  type HomepageContent,
+} from '@/lib/marketing/homepage-schema'
+import type {
+  MarketingDraft,
+  PublishedMarketingPage,
+} from '@/lib/marketing/store'
 import { clsx } from 'clsx'
 import {
   useCallback,
-  useEffect,
+  useMemo,
   useState,
   useTransition,
   type FormEvent,
@@ -26,9 +37,21 @@ const EXAMPLE_PROMPTS = [
   'Make it more energetic about masters swimming',
 ] as const
 
+const COPY_FIELDS = [
+  ['brand', 'Brand'],
+  ['tagline', 'Tagline'],
+  ['body', 'Supporting sentence'],
+  ['androidNote', 'Android note'],
+  ['contactPrompt', 'Contact prompt'],
+  ['contactEmail', 'Contact email'],
+  ['metaDescription', 'Meta description'],
+  ['adminLoginLabel', 'Admin login label'],
+  ['appStoreUrl', 'App Store URL'],
+] as const
+
 type Props = {
+  initialPages: PublishedMarketingPage[]
   initialDrafts: MarketingDraft[]
-  published: HomepageContent
 }
 
 function statusBadge(status: MarketingDraft['status']) {
@@ -46,14 +69,20 @@ function statusBadge(status: MarketingDraft['status']) {
   )
 }
 
-export function DesignMode({ initialDrafts, published }: Props) {
+function pageLive(page: PublishedMarketingPage) {
+  return Boolean(page.publishedAt)
+}
+
+export function DesignMode({ initialPages, initialDrafts }: Props) {
+  const [pages, setPages] = useState(initialPages)
   const [drafts, setDrafts] = useState(initialDrafts)
-  const [activeId, setActiveId] = useState<string | null>(
-    initialDrafts[0]?.id ?? null,
+  const [pageSlug, setPageSlug] = useState(
+    initialPages[0]?.slug ?? HOME_PAGE_SLUG,
   )
-  const [name, setName] = useState(initialDrafts[0]?.name ?? '')
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [name, setName] = useState('')
   const [content, setContent] = useState<HomepageContent>(
-    initialDrafts[0]?.content ?? published,
+    () => initialPages[0]?.content ?? DEFAULT_HOMEPAGE_CONTENT,
   )
   const [prompt, setPrompt] = useState('')
   const [message, setMessage] = useState<string | null>(null)
@@ -61,12 +90,28 @@ export function DesignMode({ initialDrafts, published }: Props) {
   const [previewOn, setPreviewOn] = useState(false)
   const [previewKey, setPreviewKey] = useState(0)
   const [confirmDeploy, setConfirmDeploy] = useState(false)
+  const [showNewPage, setShowNewPage] = useState(false)
+  const [newPageTitle, setNewPageTitle] = useState('')
+  const [newPageSlug, setNewPageSlug] = useState('')
+  const [slugTouched, setSlugTouched] = useState(false)
   const [pending, startTransition] = useTransition()
+  /** True while we are auto-creating a draft so fields stay editable. */
+  const [ensuringDraft, setEnsuringDraft] = useState(false)
 
+  const activePage = pages.find((p) => p.slug === pageSlug) ?? pages[0]
+  const pageDrafts = useMemo(
+    () => drafts.filter((d) => d.pageSlug === pageSlug),
+    [drafts, pageSlug],
+  )
   const active = drafts.find((d) => d.id === activeId) ?? null
+  const publicPath = publicPathForSlug(pageSlug)
+  const previewSrc = activeId
+    ? `${publicPath}?preview=${encodeURIComponent(activeId)}&t=${previewKey}`
+    : publicPath
 
   const selectDraft = useCallback((draft: MarketingDraft) => {
     setActiveId(draft.id)
+    setPageSlug(draft.pageSlug)
     setName(draft.name)
     setContent(draft.content)
     setMessage(null)
@@ -74,11 +119,27 @@ export function DesignMode({ initialDrafts, published }: Props) {
     setPreviewKey((k) => k + 1)
   }, [])
 
-  useEffect(() => {
-    if (!activeId && drafts[0]) {
-      selectDraft(drafts[0])
-    }
-  }, [activeId, drafts, selectDraft])
+  const selectPage = useCallback(
+    (slug: string) => {
+      const page = pages.find((p) => p.slug === slug)
+      if (!page) return
+      setPageSlug(slug)
+      setActiveId(null)
+      setName('')
+      setContent(page.content)
+      setMessage(null)
+      setError(null)
+      setPreviewOn(false)
+      setPreviewKey((k) => k + 1)
+      const first = drafts.find((d) => d.pageSlug === slug)
+      if (first) {
+        setActiveId(first.id)
+        setName(first.name)
+        setContent(first.content)
+      }
+    },
+    [drafts, pages],
+  )
 
   function upsertDraft(draft: MarketingDraft) {
     setDrafts((prev) => {
@@ -86,6 +147,18 @@ export function DesignMode({ initialDrafts, published }: Props) {
       return [draft, ...without].sort((a, b) =>
         b.updatedAt.localeCompare(a.updatedAt),
       )
+    })
+  }
+
+  function upsertPage(page: PublishedMarketingPage) {
+    setPages((prev) => {
+      const without = prev.filter((p) => p.slug !== page.slug)
+      const next = [...without, page]
+      return next.sort((a, b) => {
+        if (a.slug === HOME_PAGE_SLUG) return -1
+        if (b.slug === HOME_PAGE_SLUG) return 1
+        return a.title.localeCompare(b.title)
+      })
     })
   }
 
@@ -97,10 +170,36 @@ export function DesignMode({ initialDrafts, published }: Props) {
     })
   }
 
+  /** Ensure a draft exists so edits/prompts have somewhere to land. Fields stay editable. */
+  async function ensureDraft(): Promise<string | null> {
+    if (activeId) return activeId
+    setEnsuringDraft(true)
+    try {
+      const result = await createDesignDraftAction({
+        name: `Draft ${new Date().toLocaleString()}`,
+        pageSlug,
+        content,
+      })
+      if ('error' in result) {
+        setError(result.error)
+        return null
+      }
+      upsertDraft(result.data)
+      setActiveId(result.data.id)
+      setName(result.data.name)
+      setContent(result.data.content)
+      return result.data.id
+    } finally {
+      setEnsuringDraft(false)
+    }
+  }
+
   function onCreateDraft() {
     run(async () => {
       const result = await createDesignDraftAction({
         name: `Draft ${new Date().toLocaleString()}`,
+        pageSlug,
+        content: activePage?.content,
       })
       if ('error' in result) {
         setError(result.error)
@@ -108,24 +207,46 @@ export function DesignMode({ initialDrafts, published }: Props) {
       }
       upsertDraft(result.data)
       selectDraft(result.data)
-      setMessage('New draft created from the live homepage.')
+      setMessage('New draft created from the published page.')
+    })
+  }
+
+  function onCreatePage(e: FormEvent) {
+    e.preventDefault()
+    run(async () => {
+      const result = await createDesignPageAction({
+        title: newPageTitle,
+        slug: newPageSlug || undefined,
+      })
+      if ('error' in result) {
+        setError(result.error)
+        return
+      }
+      upsertPage(result.data.page)
+      upsertDraft(result.data.draft)
+      setShowNewPage(false)
+      setNewPageTitle('')
+      setNewPageSlug('')
+      setSlugTouched(false)
+      selectDraft(result.data.draft)
+      setMessage(
+        `Created page “${result.data.page.title}” at ${publicPathForSlug(result.data.page.slug)}. Publish to make it live.`,
+      )
     })
   }
 
   function onApplyPrompt(e?: FormEvent) {
     e?.preventDefault()
-    if (!activeId) {
-      setError('Create a draft first.')
-      return
-    }
     const promptText = prompt.trim()
     if (!promptText) {
       setError('Enter a prompt describing the change you want.')
       return
     }
     run(async () => {
+      const draftId = await ensureDraft()
+      if (!draftId) return
       const result = await applyDesignPromptAction({
-        draftId: activeId,
+        draftId,
         prompt: promptText,
         content,
       })
@@ -143,22 +264,16 @@ export function DesignMode({ initialDrafts, published }: Props) {
             ? 'Applied AI suggestion to the draft.'
             : 'Applied heuristic edit to the draft.'),
       )
-      if (previewOn) {
-        await enableDesignPreviewAction(activeId)
-        setPreviewKey((k) => k + 1)
-      }
     })
   }
 
   function onExamplePrompt(example: string) {
-    if (!activeId) {
-      setError('Create a draft first.')
-      return
-    }
     setPrompt(example)
     run(async () => {
+      const draftId = await ensureDraft()
+      if (!draftId) return
       const result = await applyDesignPromptAction({
-        draftId: activeId,
+        draftId,
         prompt: example,
         content,
       })
@@ -180,14 +295,12 @@ export function DesignMode({ initialDrafts, published }: Props) {
   }
 
   function onSaveDraft() {
-    if (!activeId) {
-      setError('Create a draft first.')
-      return
-    }
     run(async () => {
+      const draftId = await ensureDraft()
+      if (!draftId) return
       const result = await saveDesignDraftAction({
-        id: activeId,
-        name,
+        id: draftId,
+        name: name || `Draft ${new Date().toLocaleString()}`,
         content,
       })
       if ('error' in result) {
@@ -195,20 +308,19 @@ export function DesignMode({ initialDrafts, published }: Props) {
         return
       }
       upsertDraft(result.data)
+      setName(result.data.name)
       setPreviewKey((k) => k + 1)
       setMessage('Draft saved.')
     })
   }
 
   function onPreview() {
-    if (!activeId) {
-      setError('Create a draft first.')
-      return
-    }
     run(async () => {
+      const draftId = await ensureDraft()
+      if (!draftId) return
       const saved = await saveDesignDraftAction({
-        id: activeId,
-        name,
+        id: draftId,
+        name: name || `Draft ${new Date().toLocaleString()}`,
         content,
       })
       if ('error' in saved) {
@@ -216,7 +328,8 @@ export function DesignMode({ initialDrafts, published }: Props) {
         return
       }
       upsertDraft(saved.data)
-      const result = await enableDesignPreviewAction(activeId)
+      setName(saved.data.name)
+      const result = await enableDesignPreviewAction(draftId)
       if ('error' in result) {
         setError(result.error)
         return
@@ -224,7 +337,7 @@ export function DesignMode({ initialDrafts, published }: Props) {
       setPreviewOn(true)
       setPreviewKey((k) => k + 1)
       setMessage(
-        'Preview enabled — the iframe and / (this browser) show this draft.',
+        `Preview enabled — open ${result.data.previewPath} to view this draft.`,
       )
     })
   }
@@ -234,25 +347,22 @@ export function DesignMode({ initialDrafts, published }: Props) {
       await clearDesignPreviewAction()
       setPreviewOn(false)
       setPreviewKey((k) => k + 1)
-      setMessage('Preview cleared — homepage shows the published version.')
+      setMessage('Preview cleared — public path shows the published version.')
     })
   }
 
   function onCommitDeploy() {
-    if (!activeId) {
-      setError('Create a draft first.')
-      return
-    }
     setConfirmDeploy(true)
   }
 
   function confirmCommitDeploy() {
-    if (!activeId) return
     setConfirmDeploy(false)
     run(async () => {
+      const draftId = await ensureDraft()
+      if (!draftId) return
       const result = await commitAndDeployDesignAction({
-        draftId: activeId,
-        name,
+        draftId,
+        name: name || `Draft ${new Date().toLocaleString()}`,
         content,
       })
       if ('error' in result) {
@@ -260,14 +370,16 @@ export function DesignMode({ initialDrafts, published }: Props) {
         return
       }
       upsertDraft(result.data.draft)
+      upsertPage(result.data.page)
       setPreviewOn(false)
       setPreviewKey((k) => k + 1)
       const deploy = result.data.deploy
       setMessage(
         'success' in deploy && deploy.success
-          ? deploy.message +
-              (deploy.commitUrl ? ` ${deploy.commitUrl}` : '')
-          : 'Published.',
+          ? `${deploy.message} Live at ${result.data.publicPath}${
+              deploy.commitUrl ? ` ${deploy.commitUrl}` : ''
+            }`
+          : `Published at ${result.data.publicPath}.`,
       )
     })
   }
@@ -283,15 +395,34 @@ export function DesignMode({ initialDrafts, published }: Props) {
       }
       setDrafts((prev) => prev.filter((d) => d.id !== id))
       if (activeId === id) {
-        const next = drafts.find((d) => d.id !== id)
+        const next = pageDrafts.find((d) => d.id !== id)
         if (next) selectDraft(next)
         else {
           setActiveId(null)
           setName('')
-          setContent(published)
+          setContent(activePage?.content ?? content)
         }
       }
       setMessage('Draft deleted.')
+    })
+  }
+
+  function onDeletePage() {
+    if (pageSlug === HOME_PAGE_SLUG) return
+    const ok = window.confirm(
+      `Delete page “${activePage?.title}” (${publicPath})? This cannot be undone.`,
+    )
+    if (!ok) return
+    run(async () => {
+      const result = await deleteDesignPageAction(pageSlug)
+      if ('error' in result) {
+        setError(result.error)
+        return
+      }
+      setPages((prev) => prev.filter((p) => p.slug !== pageSlug))
+      setDrafts((prev) => prev.filter((d) => d.pageSlug !== pageSlug))
+      selectPage(HOME_PAGE_SLUG)
+      setMessage('Page deleted.')
     })
   }
 
@@ -302,28 +433,95 @@ export function DesignMode({ initialDrafts, published }: Props) {
     setContent((prev) => ({ ...prev, [key]: value }))
   }
 
+  const busy = pending || ensuringDraft
+
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <div className="space-y-6">
         <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-zinc-950">Drafts</h2>
+            <h2 className="text-sm font-semibold text-zinc-950">Pages</h2>
+            <button
+              type="button"
+              onClick={() => {
+                setShowNewPage(true)
+                setError(null)
+              }}
+              className="rounded-lg bg-zinc-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              New page
+            </button>
+          </div>
+          <ul className="mt-3 divide-y divide-zinc-100">
+            {pages.map((page) => (
+              <li key={page.slug}>
+                <button
+                  type="button"
+                  onClick={() => selectPage(page.slug)}
+                  className={clsx(
+                    'flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-zinc-50',
+                    page.slug === pageSlug && 'bg-zinc-100',
+                  )}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-zinc-900">
+                      {page.title}
+                    </span>
+                    <span className="text-xs text-zinc-500">
+                      {publicPathForSlug(page.slug)}
+                    </span>
+                  </span>
+                  <span
+                    className={clsx(
+                      'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                      pageLive(page)
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-amber-100 text-amber-900',
+                    )}
+                  >
+                    {pageLive(page) ? 'live' : 'unpublished'}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {pageSlug !== HOME_PAGE_SLUG ? (
+            <button
+              type="button"
+              onClick={onDeletePage}
+              disabled={busy}
+              className="mt-3 text-xs font-medium text-red-600 hover:text-red-800 disabled:opacity-50"
+            >
+              Delete this page
+            </button>
+          ) : null}
+        </section>
+
+        <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-950">Drafts</h2>
+              <p className="text-xs text-zinc-500">
+                For {activePage?.title ?? 'page'} ({publicPath})
+              </p>
+            </div>
             <button
               type="button"
               onClick={onCreateDraft}
-              disabled={pending}
-              className="rounded-lg bg-zinc-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+              disabled={busy}
+              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
             >
               New draft
             </button>
           </div>
-          {drafts.length === 0 ? (
+          {pageDrafts.length === 0 ? (
             <p className="mt-3 text-sm text-zinc-500">
-              No drafts yet. Create one to start prompting changes.
+              No drafts yet — edit any field or apply a prompt and a draft will
+              be created automatically.
             </p>
           ) : (
             <ul className="mt-3 divide-y divide-zinc-100">
-              {drafts.map((draft) => (
+              {pageDrafts.map((draft) => (
                 <li key={draft.id} className="flex items-center gap-2 py-2">
                   <button
                     type="button"
@@ -346,7 +544,7 @@ export function DesignMode({ initialDrafts, published }: Props) {
                   <button
                     type="button"
                     onClick={() => onDeleteDraft(draft.id)}
-                    disabled={pending}
+                    disabled={busy}
                     className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-zinc-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
                   >
                     Delete
@@ -368,7 +566,7 @@ export function DesignMode({ initialDrafts, published }: Props) {
                 key={example}
                 type="button"
                 onClick={() => onExamplePrompt(example)}
-                disabled={!activeId || pending}
+                disabled={busy}
                 className="rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
               >
                 {example}
@@ -384,43 +582,34 @@ export function DesignMode({ initialDrafts, published }: Props) {
               rows={3}
               placeholder="Make the copy punchier for masters swim teams…"
               className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none ring-zinc-950 focus:ring-2"
-              disabled={!activeId || pending}
             />
             <button
               type="submit"
-              disabled={!activeId || pending || !prompt.trim()}
+              disabled={busy || !prompt.trim()}
               className="rounded-lg bg-zinc-950 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
             >
-              {pending ? 'Working…' : 'Apply prompt'}
+              {busy ? 'Working…' : 'Apply prompt'}
             </button>
           </form>
         </section>
 
         <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
           <h2 className="text-sm font-semibold text-zinc-950">Copy</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            All fields are editable. Saving or prompting creates a draft if
+            needed.
+          </p>
           <div className="mt-4 grid gap-3">
             <label className="block text-xs font-medium text-zinc-600">
               Draft name
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                disabled={!activeId || pending}
-                className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none focus:ring-2 focus:ring-zinc-950 disabled:opacity-50"
+                placeholder="Untitled draft"
+                className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none focus:ring-2 focus:ring-zinc-950"
               />
             </label>
-            {(
-              [
-                ['brand', 'Brand'],
-                ['tagline', 'Tagline'],
-                ['body', 'Supporting sentence'],
-                ['androidNote', 'Android note'],
-                ['contactPrompt', 'Contact prompt'],
-                ['contactEmail', 'Contact email'],
-                ['metaDescription', 'Meta description'],
-                ['adminLoginLabel', 'Admin login label'],
-                ['appStoreUrl', 'App Store URL'],
-              ] as const
-            ).map(([key, label]) => (
+            {COPY_FIELDS.map(([key, label]) => (
               <label key={key} className="block text-xs font-medium text-zinc-600">
                 {label}
                 {key === 'body' || key === 'metaDescription' ? (
@@ -428,15 +617,13 @@ export function DesignMode({ initialDrafts, published }: Props) {
                     value={content[key]}
                     onChange={(e) => updateField(key, e.target.value)}
                     rows={key === 'body' ? 3 : 2}
-                    disabled={!activeId || pending}
-                    className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none focus:ring-2 focus:ring-zinc-950 disabled:opacity-50"
+                    className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none focus:ring-2 focus:ring-zinc-950"
                   />
                 ) : (
                   <input
                     value={content[key]}
                     onChange={(e) => updateField(key, e.target.value)}
-                    disabled={!activeId || pending}
-                    className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none focus:ring-2 focus:ring-zinc-950 disabled:opacity-50"
+                    className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none focus:ring-2 focus:ring-zinc-950"
                   />
                 )}
               </label>
@@ -453,7 +640,10 @@ export function DesignMode({ initialDrafts, published }: Props) {
                   .slice()
                   .reverse()
                   .map((entry, i) => (
-                    <li key={`${entry.at}-${i}`} className="text-xs text-zinc-600">
+                    <li
+                      key={`${entry.at}-${i}`}
+                      className="text-xs text-zinc-600"
+                    >
                       <span className="font-medium text-zinc-800">
                         [{entry.source}]
                       </span>{' '}
@@ -468,7 +658,7 @@ export function DesignMode({ initialDrafts, published }: Props) {
             <button
               type="button"
               onClick={onSaveDraft}
-              disabled={!activeId || pending}
+              disabled={busy}
               className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
             >
               Save draft
@@ -476,7 +666,7 @@ export function DesignMode({ initialDrafts, published }: Props) {
             <button
               type="button"
               onClick={onPreview}
-              disabled={!activeId || pending}
+              disabled={busy}
               className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
             >
               Preview
@@ -485,7 +675,7 @@ export function DesignMode({ initialDrafts, published }: Props) {
               <button
                 type="button"
                 onClick={onClearPreview}
-                disabled={pending}
+                disabled={busy}
                 className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
               >
                 Clear preview
@@ -494,53 +684,12 @@ export function DesignMode({ initialDrafts, published }: Props) {
             <button
               type="button"
               onClick={onCommitDeploy}
-              disabled={!activeId || pending}
+              disabled={busy}
               className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
             >
               Commit & deploy
             </button>
           </div>
-
-          {confirmDeploy ? (
-            <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="deploy-confirm-title"
-            >
-              <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg ring-1 ring-zinc-200">
-                <h3
-                  id="deploy-confirm-title"
-                  className="text-base font-semibold text-zinc-950"
-                >
-                  Publish this draft as the live homepage?
-                </h3>
-                <p className="mt-2 text-sm text-zinc-600">
-                  Visitors will see the new copy after publish. With GitHub
-                  token configured, this also commits and triggers a Vercel
-                  deploy.
-                </p>
-                <div className="mt-5 flex flex-wrap justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDeploy(false)}
-                    disabled={pending}
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={confirmCommitDeploy}
-                    disabled={pending}
-                    className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
-                  >
-                    Yes, commit & deploy
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : null}
         </section>
 
         {(message || error) && (
@@ -563,15 +712,15 @@ export function DesignMode({ initialDrafts, published }: Props) {
             <h2 className="text-sm font-semibold text-zinc-950">Live preview</h2>
             <p className="text-xs text-zinc-500">
               {activeId
-                ? 'Iframe loads this draft via a staff-only preview link. Use Preview to also set a session cookie for /.'
-                : 'Create or select a draft to preview the homepage.'}
+                ? `Previewing draft on ${publicPath}`
+                : `Showing published ${publicPath}. Save or prompt to create a draft.`}
             </p>
           </div>
           <a
             href={
               activeId
-                ? `/?preview=${encodeURIComponent(activeId)}`
-                : '/'
+                ? `${publicPath}?preview=${encodeURIComponent(activeId)}`
+                : publicPath
             }
             target="_blank"
             rel="noreferrer"
@@ -583,16 +732,128 @@ export function DesignMode({ initialDrafts, published }: Props) {
         <div className="relative bg-zinc-100">
           <iframe
             key={previewKey}
-            title="Marketing homepage preview"
-            src={
-              activeId
-                ? `/?preview=${encodeURIComponent(activeId)}&t=${previewKey}`
-                : '/'
-            }
+            title="Marketing page preview"
+            src={previewSrc}
             className="h-[min(80vh,52rem)] w-full border-0 bg-[#07131f]"
           />
         </div>
       </section>
+
+      {showNewPage ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="new-page-title"
+        >
+          <form
+            onSubmit={onCreatePage}
+            className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg ring-1 ring-zinc-200"
+          >
+            <h3
+              id="new-page-title"
+              className="text-base font-semibold text-zinc-950"
+            >
+              Create a new page
+            </h3>
+            <p className="mt-2 text-sm text-zinc-600">
+              Starts from Sidekick homepage layout. Publish to make it live at{' '}
+              <code className="text-xs">/p/your-slug</code>.
+            </p>
+            <label className="mt-4 block text-xs font-medium text-zinc-600">
+              Title
+              <input
+                autoFocus
+                value={newPageTitle}
+                onChange={(e) => {
+                  const title = e.target.value
+                  setNewPageTitle(title)
+                  if (!slugTouched) setNewPageSlug(slugifyPageTitle(title))
+                }}
+                placeholder="Summer camp"
+                className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none focus:ring-2 focus:ring-zinc-950"
+              />
+            </label>
+            <label className="mt-3 block text-xs font-medium text-zinc-600">
+              URL slug
+              <input
+                value={newPageSlug}
+                onChange={(e) => {
+                  setSlugTouched(true)
+                  setNewPageSlug(
+                    e.target.value
+                      .toLowerCase()
+                      .replace(/[^a-z0-9-]/g, '-')
+                      .replace(/--+/g, '-'),
+                  )
+                }}
+                placeholder="summer-camp"
+                className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none focus:ring-2 focus:ring-zinc-950"
+              />
+              <span className="mt-1 block text-xs font-normal text-zinc-400">
+                Will be live at /p/{newPageSlug || '…'}
+              </span>
+            </label>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowNewPage(false)}
+                className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={busy || !newPageTitle.trim()}
+                className="rounded-lg bg-zinc-950 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+              >
+                Create page
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {confirmDeploy ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="deploy-confirm-title"
+        >
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg ring-1 ring-zinc-200">
+            <h3
+              id="deploy-confirm-title"
+              className="text-base font-semibold text-zinc-950"
+            >
+              Publish this draft as the live page?
+            </h3>
+            <p className="mt-2 text-sm text-zinc-600">
+              Visitors will see the new copy at{' '}
+              <strong className="font-medium">{publicPath}</strong>. With
+              GitHub token configured, this also commits and triggers a Vercel
+              deploy.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeploy(false)}
+                className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmCommitDeploy}
+                disabled={busy}
+                className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+              >
+                Yes, commit & deploy
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

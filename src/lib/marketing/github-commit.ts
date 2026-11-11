@@ -1,6 +1,9 @@
 import { isAdminDemoMode } from '@/lib/admin-demo-server'
-import type { HomepageContent } from '@/lib/marketing/homepage-schema'
-import { getPublishedHomepagePath } from '@/lib/marketing/store'
+import { HOME_PAGE_SLUG } from '@/lib/marketing/homepage-schema'
+import {
+  getPublishedPageRelativePath,
+  type PublishedMarketingPage,
+} from '@/lib/marketing/store'
 
 export type CommitDeployResult =
   | {
@@ -32,12 +35,12 @@ function resolveBranch(): string {
 }
 
 /**
- * Persist published homepage content. In demo mode this is a no-op for git.
+ * Persist published page content. In demo mode this is a no-op for git.
  * With GITHUB_TOKEN + repo env, creates a commit that triggers Vercel deploy.
- * Otherwise writes the content file locally (dev) so revalidate can pick it up.
+ * Otherwise the file was already written locally by publishMarketingDraft.
  */
-export async function commitHomepagePublish(
-  content: HomepageContent,
+export async function commitPagePublish(
+  page: PublishedMarketingPage,
   message: string,
 ): Promise<CommitDeployResult> {
   if (isAdminDemoMode()) {
@@ -45,24 +48,25 @@ export async function commitHomepagePublish(
       success: true,
       mode: 'demo',
       message:
-        'Demo mode — live homepage updated in this session only. No git commit or deploy.',
+        'Demo mode — live page updated in this session only. No git commit or deploy.',
     }
   }
 
   const token = process.env.GITHUB_TOKEN || process.env.MARKETING_GITHUB_TOKEN
   const repoInfo = resolveRepo()
+  const filePath = getPublishedPageRelativePath(page.slug)
 
   if (token && repoInfo) {
     try {
-      const result = await commitViaGitHub({
+      return await commitViaGitHub({
         token,
         owner: repoInfo.owner,
         repo: repoInfo.repo,
         branch: resolveBranch(),
-        content,
+        page,
         message,
+        filePath,
       })
-      return result
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'Unknown error'
       return {
@@ -71,13 +75,29 @@ export async function commitHomepagePublish(
     }
   }
 
-  // Local / no token: file already written by publishMarketingDraft
   return {
     success: true,
     mode: 'file',
-    message:
-      'Homepage published and revalidated. Add GITHUB_TOKEN (and optional MARKETING_GITHUB_REPO) to commit & trigger a Vercel deploy from admin.',
+    message: `Page published and revalidated (${filePath}). Add GITHUB_TOKEN (and optional MARKETING_GITHUB_REPO) to commit & trigger a Vercel deploy from admin.`,
   }
+}
+
+/** @deprecated Use commitPagePublish */
+export async function commitHomepagePublish(
+  content: PublishedMarketingPage['content'],
+  message: string,
+  pageSlug = HOME_PAGE_SLUG,
+) {
+  return commitPagePublish(
+    {
+      slug: pageSlug,
+      title: pageSlug === HOME_PAGE_SLUG ? 'Homepage' : pageSlug,
+      content,
+      updatedAt: new Date().toISOString(),
+      publishedAt: new Date().toISOString(),
+    },
+    message,
+  )
 }
 
 async function commitViaGitHub(input: {
@@ -85,11 +105,11 @@ async function commitViaGitHub(input: {
   owner: string
   repo: string
   branch: string
-  content: HomepageContent
+  page: PublishedMarketingPage
   message: string
+  filePath: string
 }): Promise<CommitDeployResult> {
-  const { token, owner, repo, branch, content, message } = input
-  const filePath = 'content/marketing/homepage.json'
+  const { token, owner, repo, branch, page, message, filePath } = input
   const api = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`
   const headers = {
     Accept: 'application/vnd.github+json',
@@ -111,9 +131,19 @@ async function commitViaGitHub(input: {
     throw new Error(`Could not read file (${existing.status}): ${text}`)
   }
 
+  const payload =
+    page.slug === HOME_PAGE_SLUG
+      ? page.content
+      : {
+          title: page.title,
+          content: page.content,
+          updatedAt: page.updatedAt,
+          publishedAt: page.publishedAt,
+        }
+
   const body = JSON.stringify({
     message,
-    content: Buffer.from(`${JSON.stringify(content, null, 2)}\n`).toString(
+    content: Buffer.from(`${JSON.stringify(payload, null, 2)}\n`).toString(
       'base64',
     ),
     branch,
@@ -142,8 +172,4 @@ async function commitViaGitHub(input: {
     message: `Committed to ${owner}/${repo}@${branch}. Vercel will deploy from this commit.`,
     commitUrl: putBody.commit?.html_url ?? putBody.content?.html_url,
   }
-}
-
-export function publishedContentRelativePath() {
-  return getPublishedHomepagePath().replace(`${process.cwd()}/`, '')
 }
