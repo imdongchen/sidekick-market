@@ -1,9 +1,10 @@
 'use client'
 
 import type { ElementSelection } from '@/lib/marketing/patches'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 export const DESIGN_SELECT_MESSAGE = 'sidekick-design-select'
+export const DESIGN_SELECT_MODE_MESSAGE = 'sidekick-design-select-mode'
 export const DESIGN_SELECT_STYLE_ID = 'sidekick-design-select-style'
 
 function ensureDesignId(el: HTMLElement): string {
@@ -61,12 +62,33 @@ function readableLabel(el: HTMLElement): string {
 }
 
 /**
- * Enables click-to-select on the marketing page when opened inside Design mode.
- * Posts selection details to the parent frame.
+ * Mounted in Design mode previews. Selection mode starts OFF — the parent
+ * frame toggles it via postMessage (`DESIGN_SELECT_MODE_MESSAGE`).
  */
 export function DesignSelectBridge({ enabled }: { enabled: boolean }) {
+  const [selectMode, setSelectMode] = useState(false)
+
   useEffect(() => {
     if (!enabled) return
+    if (window.parent === window) return
+
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return
+      const data = event.data as { type?: string; active?: boolean }
+      if (data?.type !== DESIGN_SELECT_MODE_MESSAGE) return
+      setSelectMode(Boolean(data.active))
+    }
+
+    window.addEventListener('message', onMessage)
+    window.parent.postMessage(
+      { type: 'sidekick-design-frame-ready' },
+      window.location.origin,
+    )
+    return () => window.removeEventListener('message', onMessage)
+  }, [enabled])
+
+  useEffect(() => {
+    if (!enabled || !selectMode) return
     if (window.parent === window) return
 
     let hoverEl: HTMLElement | null = null
@@ -146,7 +168,16 @@ export function DesignSelectBridge({ enabled }: { enabled: boolean }) {
       if (selectedEl) selectedEl.removeAttribute('data-design-selected')
       style.remove()
     }
-  }, [enabled])
+  }, [enabled, selectMode])
 
-  return null
+  if (!enabled || !selectMode) return null
+
+  return (
+    <div
+      data-design-ignore
+      className="relative z-20 bg-emerald-700/90 px-4 py-2 text-center text-sm font-medium text-white"
+    >
+      Selection mode on — click an element to select it.
+    </div>
+  )
 }

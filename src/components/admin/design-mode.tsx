@@ -12,7 +12,10 @@ import {
   removeElementPatchAction,
   saveDesignDraftAction,
 } from '@/app/admin/design/actions'
-import { DESIGN_SELECT_MESSAGE } from '@/components/marketing/design-select-bridge'
+import {
+  DESIGN_SELECT_MESSAGE,
+  DESIGN_SELECT_MODE_MESSAGE,
+} from '@/components/marketing/design-select-bridge'
 import { DESIGN_PATCHES_MESSAGE } from '@/components/marketing/patch-applier'
 import {
   DEFAULT_HOMEPAGE_CONTENT,
@@ -112,9 +115,12 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
   const [slugTouched, setSlugTouched] = useState(false)
   const [pending, startTransition] = useTransition()
   const [ensuringDraft, setEnsuringDraft] = useState(false)
+  const [selectMode, setSelectMode] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const patchesRef = useRef(patches)
   patchesRef.current = patches
+  const selectModeRef = useRef(selectMode)
+  selectModeRef.current = selectMode
 
   const activePage = pages.find((p) => p.slug === pageSlug) ?? pages[0]
   const pageDrafts = useMemo(
@@ -135,6 +141,20 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       window.location.origin,
     )
   }, [])
+
+  const pushSelectModeToPreview = useCallback((active: boolean) => {
+    const frame = iframeRef.current?.contentWindow
+    if (!frame) return
+    frame.postMessage(
+      { type: DESIGN_SELECT_MODE_MESSAGE, active },
+      window.location.origin,
+    )
+  }, [])
+
+  const syncPreviewFrame = useCallback(() => {
+    pushPatchesToPreview(patchesRef.current)
+    pushSelectModeToPreview(selectModeRef.current)
+  }, [pushPatchesToPreview, pushSelectModeToPreview])
 
   useEffect(() => {
     const stored = readStoredDrafts()
@@ -161,7 +181,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
         selection?: ElementSelection
       }
       if (data?.type === 'sidekick-design-frame-ready') {
-        pushPatchesToPreview(patchesRef.current)
+        syncPreviewFrame()
         return
       }
       if (data?.type !== DESIGN_SELECT_MESSAGE || !data.selection) return
@@ -171,11 +191,28 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [pushPatchesToPreview])
+  }, [syncPreviewFrame])
 
   useEffect(() => {
     pushPatchesToPreview(patches)
   }, [patches, previewKey, pushPatchesToPreview])
+
+  useEffect(() => {
+    pushSelectModeToPreview(selectMode)
+  }, [selectMode, previewKey, pushSelectModeToPreview])
+
+  function toggleSelectMode() {
+    setSelectMode((prev) => {
+      const next = !prev
+      setMessage(
+        next
+          ? 'Selection mode on — click an element in the preview.'
+          : 'Selection mode off — preview clicks work normally.',
+      )
+      setError(null)
+      return next
+    })
+  }
 
   const selectDraft = useCallback((draft: MarketingDraft) => {
     setActiveId(draft.id)
@@ -183,6 +220,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
     setName(draft.name)
     setPatches(draft.patches)
     setSelection(null)
+    setSelectMode(false)
     setMessage(null)
     setError(null)
     setPreviewKey((k) => k + 1)
@@ -197,6 +235,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       setName('')
       setPatches(page.patches)
       setSelection(null)
+      setSelectMode(false)
       setMessage(null)
       setError(null)
       setPreviewKey((k) => k + 1)
@@ -450,7 +489,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       }
       setPreviewKey((k) => k + 1)
       setMessage(
-        `Preview ready — click elements in the iframe, then prompt changes.`,
+        `Preview ready — toggle Select element, click a target, then prompt.`,
       )
     })
   }
@@ -685,9 +724,30 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
         </section>
 
         <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
-          <h2 className="text-sm font-semibold text-zinc-950">
-            Selected element
-          </h2>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-950">
+                Selected element
+              </h2>
+              <p className="mt-1 text-xs text-zinc-500">
+                Turn selection mode on, then click an element in the preview.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={selectMode}
+              onClick={toggleSelectMode}
+              className={clsx(
+                'shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition',
+                selectMode
+                  ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                  : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200',
+              )}
+            >
+              {selectMode ? 'Selecting…' : 'Select element'}
+            </button>
+          </div>
           {selection ? (
             <div className="mt-3 rounded-lg bg-zinc-50 p-3 text-sm text-zinc-800 ring-1 ring-zinc-200">
               <p className="font-medium">{selection.label}</p>
@@ -699,9 +759,10 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
               </p>
             </div>
           ) : (
-            <p className="mt-2 text-sm text-zinc-500">
-              Click any element in the live preview to select it. Works on
-              headlines, paragraphs, links, buttons — anything in the page DOM.
+            <p className="mt-3 text-sm text-zinc-500">
+              {selectMode
+                ? 'Click any element in the live preview — headlines, paragraphs, links, buttons, anything in the DOM.'
+                : 'Selection mode is off. Toggle it on to pick an element without following preview links.'}
             </p>
           )}
 
@@ -839,22 +900,37 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-zinc-200">
         <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-950">
-              Live preview · select mode
-            </h2>
+            <h2 className="text-sm font-semibold text-zinc-950">Live preview</h2>
             <p className="text-xs text-zinc-500">
-              Hover and click elements to select. Amber = hover, green =
-              selected.
+              {selectMode
+                ? 'Selection mode on — amber hover, green selected.'
+                : 'Browse normally, or turn on Select element to pick a target.'}
             </p>
           </div>
-          <a
-            href={previewSrc}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs font-medium text-zinc-600 underline-offset-2 hover:underline"
-          >
-            Open preview
-          </a>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={selectMode}
+              onClick={toggleSelectMode}
+              className={clsx(
+                'rounded-lg px-3 py-1.5 text-xs font-semibold transition',
+                selectMode
+                  ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                  : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200',
+              )}
+            >
+              {selectMode ? 'Selecting…' : 'Select element'}
+            </button>
+            <a
+              href={previewSrc}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-medium text-zinc-600 underline-offset-2 hover:underline"
+            >
+              Open preview
+            </a>
+          </div>
         </div>
         <div className="relative bg-zinc-100">
           <iframe
@@ -862,7 +938,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
             key={previewKey}
             title="Marketing page preview"
             src={previewSrc}
-            onLoad={() => pushPatchesToPreview(patchesRef.current)}
+            onLoad={syncPreviewFrame}
             className="h-[min(80vh,52rem)] w-full border-0 bg-[#07131f]"
           />
         </div>
@@ -886,9 +962,9 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
               Create a new page
             </h3>
             <p className="mt-2 text-sm text-zinc-600">
-              Starts from the Sidekick marketing layout. After create, click any
-              element and prompt changes — structure does not need to match
-              title/tagline fields.
+              Starts from the Sidekick marketing layout. After create, toggle
+              Select element, click a target, and prompt changes — structure
+              does not need to match title/tagline fields.
             </p>
             <label className="mt-4 block text-xs font-medium text-zinc-600">
               Title

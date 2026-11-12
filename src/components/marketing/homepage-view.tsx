@@ -32,14 +32,7 @@ export function HomepageView({
         </div>
       ) : null}
 
-      {designSelect ? (
-        <div
-          data-design-ignore
-          className="relative z-20 bg-emerald-700/90 px-4 py-2 text-center text-sm font-medium text-white"
-        >
-          Click any element to select it, then prompt a change in Design mode.
-        </div>
-      ) : null}
+      <DesignSelectBridge enabled={designSelect} />
 
       {/* Atmosphere */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
@@ -154,7 +147,6 @@ export function HomepageView({
       </div>
 
       <PatchApplier patches={patches} />
-      <DesignSelectBridge enabled={designSelect} />
     </div>
   )
 }

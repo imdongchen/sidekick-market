@@ -50,13 +50,6 @@ export function PatchApplier({ patches }: { patches: ElementPatch[] }) {
       setLivePatches(data.patches)
     }
     window.addEventListener('message', onMessage)
-    // Tell parent this frame is ready to receive patches.
-    if (window.parent !== window) {
-      window.parent.postMessage(
-        { type: 'sidekick-design-frame-ready' },
-        window.location.origin,
-      )
-    }
     return () => window.removeEventListener('message', onMessage)
   }, [])
 
