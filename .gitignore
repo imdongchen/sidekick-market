@@ -4,3 +4,8 @@ node_modules
 .env.local
 .env*.local
 tsconfig.tsbuildinfo
+
+# Local marketing design drafts (published homepage.json / pages/*.json are committed)
+content/marketing/drafts/*.json
+# Keep pages dir; ignore nothing else under pages (published pages are committed)
+
