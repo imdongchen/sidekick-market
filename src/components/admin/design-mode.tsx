@@ -13,13 +13,14 @@ import {
   saveDesignDraftAction,
 } from '@/app/admin/design/actions'
 import { DESIGN_SELECT_MESSAGE } from '@/components/marketing/design-select-bridge'
+import { DESIGN_PATCHES_MESSAGE } from '@/components/marketing/patch-applier'
 import {
   DEFAULT_HOMEPAGE_CONTENT,
   HOME_PAGE_SLUG,
   publicPathForSlug,
   slugifyPageTitle,
 } from '@/lib/marketing/homepage-schema'
-import type { ElementSelection } from '@/lib/marketing/patches'
+import type { ElementPatch, ElementSelection } from '@/lib/marketing/patches'
 import type {
   MarketingDraft,
   PublishedMarketingPage,
@@ -29,10 +30,13 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type FormEvent,
 } from 'react'
+
+const DRAFTS_STORAGE_KEY = 'sidekick-design-drafts-v1'
 
 const EXAMPLE_PROMPTS = [
   'change this to "Every lap, together"',
@@ -64,6 +68,27 @@ function pageLive(page: PublishedMarketingPage) {
   return Boolean(page.publishedAt)
 }
 
+function readStoredDrafts(): MarketingDraft[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(DRAFTS_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as MarketingDraft[]
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function writeStoredDrafts(drafts: MarketingDraft[]) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(drafts))
+  } catch {
+    // quota / private mode — ignore
+  }
+}
+
 export function DesignMode({ initialPages, initialDrafts }: Props) {
   const [pages, setPages] = useState(initialPages)
   const [drafts, setDrafts] = useState(initialDrafts)
@@ -72,7 +97,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
   )
   const [activeId, setActiveId] = useState<string | null>(null)
   const [name, setName] = useState('')
-  const [patches, setPatches] = useState(
+  const [patches, setPatches] = useState<ElementPatch[]>(
     () => initialPages[0]?.patches ?? [],
   )
   const [selection, setSelection] = useState<ElementSelection | null>(null)
@@ -87,6 +112,9 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
   const [slugTouched, setSlugTouched] = useState(false)
   const [pending, startTransition] = useTransition()
   const [ensuringDraft, setEnsuringDraft] = useState(false)
+  const iframeRef = useRef<HTMLIFrameElement | null>(null)
+  const patchesRef = useRef(patches)
+  patchesRef.current = patches
 
   const activePage = pages.find((p) => p.slug === pageSlug) ?? pages[0]
   const pageDrafts = useMemo(
@@ -99,12 +127,42 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
     ? `${publicPath}?preview=${encodeURIComponent(activeId)}&designSelect=1&t=${previewKey}`
     : `${publicPath}?designSelect=1&t=${previewKey}`
 
+  const pushPatchesToPreview = useCallback((nextPatches: ElementPatch[]) => {
+    const frame = iframeRef.current?.contentWindow
+    if (!frame) return
+    frame.postMessage(
+      { type: DESIGN_PATCHES_MESSAGE, patches: nextPatches },
+      window.location.origin,
+    )
+  }, [])
+
+  useEffect(() => {
+    const stored = readStoredDrafts()
+    if (!stored.length) return
+    setDrafts((prev) => {
+      const byId = new Map<string, MarketingDraft>()
+      for (const d of prev) byId.set(d.id, d)
+      for (const d of stored) byId.set(d.id, d)
+      return [...byId.values()].sort((a, b) =>
+        b.updatedAt.localeCompare(a.updatedAt),
+      )
+    })
+  }, [])
+
+  useEffect(() => {
+    writeStoredDrafts(drafts)
+  }, [drafts])
+
   useEffect(() => {
     function onMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin) return
       const data = event.data as {
         type?: string
         selection?: ElementSelection
+      }
+      if (data?.type === 'sidekick-design-frame-ready') {
+        pushPatchesToPreview(patchesRef.current)
+        return
       }
       if (data?.type !== DESIGN_SELECT_MESSAGE || !data.selection) return
       setSelection(data.selection)
@@ -113,7 +171,11 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [])
+  }, [pushPatchesToPreview])
+
+  useEffect(() => {
+    pushPatchesToPreview(patches)
+  }, [patches, previewKey, pushPatchesToPreview])
 
   const selectDraft = useCallback((draft: MarketingDraft) => {
     setActiveId(draft.id)
@@ -188,8 +250,29 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
     })
   }
 
-  async function ensureDraft(): Promise<string | null> {
-    if (activeId) return activeId
+  function buildDraftSnapshot(draftId: string): MarketingDraft {
+    const existing = drafts.find((d) => d.id === draftId)
+    const now = new Date().toISOString()
+    return {
+      id: draftId,
+      pageSlug,
+      name: name || existing?.name || 'Untitled draft',
+      status: existing?.status ?? 'draft',
+      content:
+        existing?.content ??
+        activePage?.content ??
+        DEFAULT_HOMEPAGE_CONTENT,
+      patches,
+      promptHistory: existing?.promptHistory ?? [],
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      createdBy: existing?.createdBy ?? 'staff',
+      publishedAt: existing?.publishedAt ?? null,
+    }
+  }
+
+  async function ensureDraft(): Promise<MarketingDraft | null> {
+    if (activeId) return buildDraftSnapshot(activeId)
     setEnsuringDraft(true)
     try {
       const result = await createDesignDraftAction({
@@ -201,11 +284,15 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
         setError(result.error)
         return null
       }
-      upsertDraft(result.data)
-      setActiveId(result.data.id)
-      setName(result.data.name)
-      setPatches(result.data.patches)
-      return result.data.id
+      const draft = {
+        ...result.data,
+        patches: patches.length ? patches : result.data.patches,
+      }
+      upsertDraft(draft)
+      setActiveId(draft.id)
+      setName(draft.name)
+      setPatches(draft.patches)
+      return draft
     } catch (err) {
       setError(
         err instanceof Error
@@ -271,12 +358,13 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       return
     }
     run(async () => {
-      const draftId = await ensureDraft()
-      if (!draftId) return
+      const snapshot = await ensureDraft()
+      if (!snapshot) return
       const result = await applyElementPromptAction({
-        draftId,
+        draftId: snapshot.id,
         prompt: promptText,
         selection,
+        draftSnapshot: snapshot,
       })
       if ('error' in result) {
         setError(result.error)
@@ -285,7 +373,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       upsertDraft(result.data.draft)
       setPatches(result.data.draft.patches)
       setPrompt('')
-      setPreviewKey((k) => k + 1)
+      pushPatchesToPreview(result.data.draft.patches)
       setMessage(
         result.data.note ||
           `Updated ${result.data.patch.label || result.data.patch.tagName}.`,
@@ -300,12 +388,13 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
     }
     setPrompt(example)
     run(async () => {
-      const draftId = await ensureDraft()
-      if (!draftId) return
+      const snapshot = await ensureDraft()
+      if (!snapshot) return
       const result = await applyElementPromptAction({
-        draftId,
+        draftId: snapshot.id,
         prompt: example,
         selection,
+        draftSnapshot: snapshot,
       })
       if ('error' in result) {
         setError(result.error)
@@ -314,7 +403,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       upsertDraft(result.data.draft)
       setPatches(result.data.draft.patches)
       setPrompt('')
-      setPreviewKey((k) => k + 1)
+      pushPatchesToPreview(result.data.draft.patches)
       setMessage(
         result.data.note ||
           `Updated ${result.data.patch.label || result.data.patch.tagName}.`,
@@ -324,12 +413,13 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
 
   function onSaveDraft() {
     run(async () => {
-      const draftId = await ensureDraft()
-      if (!draftId) return
+      const snapshot = await ensureDraft()
+      if (!snapshot) return
       const result = await saveDesignDraftAction({
-        id: draftId,
+        id: snapshot.id,
         name: name || `Draft ${new Date().toLocaleString()}`,
         patches,
+        draftSnapshot: snapshot,
       })
       if ('error' in result) {
         setError(result.error)
@@ -338,21 +428,22 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       upsertDraft(result.data)
       setName(result.data.name)
       setPatches(result.data.patches)
-      setPreviewKey((k) => k + 1)
+      pushPatchesToPreview(result.data.patches)
       setMessage('Draft saved.')
     })
   }
 
   function onPreview() {
     run(async () => {
-      const draftId = await ensureDraft()
-      if (!draftId) return
+      const snapshot = await ensureDraft()
+      if (!snapshot) return
       await saveDesignDraftAction({
-        id: draftId,
+        id: snapshot.id,
         name: name || `Draft ${new Date().toLocaleString()}`,
         patches,
+        draftSnapshot: snapshot,
       })
-      const result = await enableDesignPreviewAction(draftId)
+      const result = await enableDesignPreviewAction(snapshot.id, snapshot)
       if ('error' in result) {
         setError(result.error)
         return
@@ -375,9 +466,11 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
   function onRemovePatch(designId: string) {
     if (!activeId) return
     run(async () => {
+      const snapshot = buildDraftSnapshot(activeId)
       const result = await removeElementPatchAction({
         draftId: activeId,
         designId,
+        draftSnapshot: snapshot,
       })
       if ('error' in result) {
         setError(result.error)
@@ -385,7 +478,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       }
       upsertDraft(result.data)
       setPatches(result.data.patches)
-      setPreviewKey((k) => k + 1)
+      pushPatchesToPreview(result.data.patches)
       setMessage('Patch removed.')
     })
   }
@@ -397,12 +490,13 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
   function confirmCommitDeploy() {
     setConfirmDeploy(false)
     run(async () => {
-      const draftId = await ensureDraft()
-      if (!draftId) return
+      const snapshot = await ensureDraft()
+      if (!snapshot) return
       const result = await commitAndDeployDesignAction({
-        draftId,
+        draftId: snapshot.id,
         name: name || `Draft ${new Date().toLocaleString()}`,
         patches,
+        draftSnapshot: snapshot,
       })
       if ('error' in result) {
         setError(result.error)
@@ -411,6 +505,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       upsertDraft(result.data.draft)
       upsertPage(result.data.page)
       setPatches(result.data.draft.patches)
+      pushPatchesToPreview(result.data.draft.patches)
       setPreviewKey((k) => k + 1)
       const deploy = result.data.deploy
       setMessage(
@@ -763,9 +858,11 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
         </div>
         <div className="relative bg-zinc-100">
           <iframe
+            ref={iframeRef}
             key={previewKey}
             title="Marketing page preview"
             src={previewSrc}
+            onLoad={() => pushPatchesToPreview(patchesRef.current)}
             className="h-[min(80vh,52rem)] w-full border-0 bg-[#07131f]"
           />
         </div>

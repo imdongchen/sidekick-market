@@ -32,6 +32,7 @@ import {
   listPublishedPages,
   publishMarketingDraft,
   updateMarketingDraft,
+  upsertMarketingDraft,
   type MarketingDraft,
   type PublishedMarketingPage,
 } from '@/lib/marketing/store'
@@ -46,6 +47,19 @@ export type DesignActionResult<T = undefined> =
 function staffLabel(firstName: string, lastName: string, email: string) {
   const name = `${firstName} ${lastName}`.trim()
   return name || email
+}
+
+/** Rehydrate a draft onto this serverless instance from the browser snapshot. */
+async function resolveDraft(
+  draftId: string,
+  snapshot?: MarketingDraft | null,
+): Promise<MarketingDraft | null> {
+  const existing = await getMarketingDraft(draftId)
+  if (existing) return existing
+  if (snapshot && snapshot.id === draftId) {
+    return upsertMarketingDraft(snapshot)
+  }
+  return null
 }
 
 export async function listDesignPagesAction(): Promise<
@@ -150,6 +164,7 @@ export async function saveDesignDraftAction(input: {
   name?: string
   content?: HomepageContent
   patches?: ElementPatch[]
+  draftSnapshot?: MarketingDraft | null
 }): Promise<DesignActionResult<MarketingDraft>> {
   await requireStaff()
   if (input.content) {
@@ -158,12 +173,16 @@ export async function saveDesignDraftAction(input: {
       return { error: parsed.error.issues[0]?.message ?? 'Invalid content' }
     }
   }
-  const draft = await updateMarketingDraft(input.id, {
-    name: input.name,
-    content: input.content,
-    patches: input.patches,
-    status: 'draft',
-  })
+  const draft = await updateMarketingDraft(
+    input.id,
+    {
+      name: input.name,
+      content: input.content,
+      patches: input.patches,
+      status: 'draft',
+    },
+    input.draftSnapshot,
+  )
   if (!draft) return { error: 'Draft not found' }
   return { success: true, data: draft }
 }
@@ -172,6 +191,8 @@ export async function applyElementPromptAction(input: {
   draftId: string
   prompt: string
   selection: ElementSelection
+  /** Browser-held draft — required on Vercel where instances do not share memory. */
+  draftSnapshot?: MarketingDraft | null
 }): Promise<
   DesignActionResult<{
     draft: MarketingDraft
@@ -182,8 +203,13 @@ export async function applyElementPromptAction(input: {
 > {
   try {
     await requireStaff()
-    const draft = await getMarketingDraft(input.draftId)
-    if (!draft) return { error: 'Draft not found' }
+    const draft = await resolveDraft(input.draftId, input.draftSnapshot)
+    if (!draft) {
+      return {
+        error:
+          'Draft not found on this server instance. Create or select a draft again, then retry the prompt.',
+      }
+    }
 
     const result = await generateElementEdit(input.selection, input.prompt)
     if ('error' in result) return { error: result.error }
@@ -201,19 +227,23 @@ export async function applyElementPromptAction(input: {
       updatedAt: now,
     }
 
-    const updated = await updateMarketingDraft(input.draftId, {
-      patches: upsertPatch(draft.patches, patch),
-      promptHistory: [
-        ...draft.promptHistory,
-        {
-          prompt: input.prompt.trim(),
-          at: now,
-          source: result.source,
-          designId: input.selection.designId,
-        },
-      ],
-      status: 'draft',
-    })
+    const updated = await updateMarketingDraft(
+      input.draftId,
+      {
+        patches: upsertPatch(draft.patches, patch),
+        promptHistory: [
+          ...draft.promptHistory,
+          {
+            prompt: input.prompt.trim(),
+            at: now,
+            source: result.source,
+            designId: input.selection.designId,
+          },
+        ],
+        status: 'draft',
+      },
+      draft,
+    )
     if (!updated) return { error: 'Failed to update draft' }
 
     return {
@@ -239,23 +269,29 @@ export async function applyElementPromptAction(input: {
 export async function removeElementPatchAction(input: {
   draftId: string
   designId: string
+  draftSnapshot?: MarketingDraft | null
 }): Promise<DesignActionResult<MarketingDraft>> {
   await requireStaff()
-  const draft = await getMarketingDraft(input.draftId)
+  const draft = await resolveDraft(input.draftId, input.draftSnapshot)
   if (!draft) return { error: 'Draft not found' }
-  const updated = await updateMarketingDraft(input.draftId, {
-    patches: draft.patches.filter((p) => p.designId !== input.designId),
-    status: 'draft',
-  })
+  const updated = await updateMarketingDraft(
+    input.draftId,
+    {
+      patches: draft.patches.filter((p) => p.designId !== input.designId),
+      status: 'draft',
+    },
+    draft,
+  )
   if (!updated) return { error: 'Failed to update draft' }
   return { success: true, data: updated }
 }
 
 export async function enableDesignPreviewAction(
   draftId: string,
+  draftSnapshot?: MarketingDraft | null,
 ): Promise<DesignActionResult<{ previewPath: string }>> {
   await requireStaff()
-  const draft = await getMarketingDraft(draftId)
+  const draft = await resolveDraft(draftId, draftSnapshot)
   if (!draft) return { error: 'Draft not found' }
 
   cookies().set(
@@ -301,6 +337,7 @@ export async function commitAndDeployDesignAction(input: {
   draftId: string
   name?: string
   patches?: ElementPatch[]
+  draftSnapshot?: MarketingDraft | null
 }): Promise<
   DesignActionResult<{
     draft: MarketingDraft
@@ -310,14 +347,18 @@ export async function commitAndDeployDesignAction(input: {
   }>
 > {
   await requireStaff()
-  const existing = await getMarketingDraft(input.draftId)
+  const existing = await resolveDraft(input.draftId, input.draftSnapshot)
   if (!existing) return { error: 'Draft not found' }
 
   if (input.name || input.patches) {
-    await updateMarketingDraft(input.draftId, {
-      name: input.name,
-      patches: input.patches,
-    })
+    await updateMarketingDraft(
+      input.draftId,
+      {
+        name: input.name,
+        patches: input.patches,
+      },
+      existing,
+    )
   }
 
   const published = await publishMarketingDraft(input.draftId)

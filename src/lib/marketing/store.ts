@@ -374,6 +374,47 @@ export async function getMarketingDraft(
   return memory().drafts.get(id) ?? null
 }
 
+/**
+ * Insert or replace a draft by id. Used on Vercel where serverless instances
+ * do not share memory or /tmp — the browser holds the source of truth and
+ * rehydrates the draft on each mutation.
+ */
+export async function upsertMarketingDraft(
+  draft: MarketingDraft,
+): Promise<MarketingDraft> {
+  await seedMemoryIfNeeded()
+  const next: MarketingDraft = {
+    ...draft,
+    pageSlug: draft.pageSlug || HOME_PAGE_SLUG,
+    content: parseHomepageContent(draft.content),
+    patches: parseElementPatches(draft.patches),
+    promptHistory: Array.isArray(draft.promptHistory)
+      ? draft.promptHistory
+      : [],
+    updatedAt: new Date().toISOString(),
+  }
+  memory().drafts.set(next.id, next)
+  await writeDraftToDisk(next)
+
+  // Keep the page shell registered so publish/preview path resolution works.
+  if (!memory().pages.has(next.pageSlug)) {
+    const now = new Date().toISOString()
+    memory().pages.set(next.pageSlug, {
+      slug: next.pageSlug,
+      title:
+        next.pageSlug === HOME_PAGE_SLUG
+          ? 'Homepage'
+          : defaultPageTitle(next.pageSlug),
+      content: next.content,
+      patches: next.patches,
+      updatedAt: now,
+      publishedAt: next.pageSlug === HOME_PAGE_SLUG ? now : '',
+    })
+  }
+
+  return next
+}
+
 export async function createMarketingDraft(input: {
   name: string
   pageSlug?: string
@@ -473,9 +514,14 @@ export async function updateMarketingDraft(
     status?: MarketingDraftStatus
     publishedAt?: string | null
   },
+  /** When the draft is missing (common on Vercel), rehydrate from this snapshot first. */
+  snapshot?: MarketingDraft | null,
 ): Promise<MarketingDraft | null> {
   await seedMemoryIfNeeded()
-  const existing = memory().drafts.get(id)
+  let existing = memory().drafts.get(id) ?? null
+  if (!existing && snapshot && snapshot.id === id) {
+    existing = await upsertMarketingDraft(snapshot)
+  }
   if (!existing) return null
   const next: MarketingDraft = {
     ...existing,
