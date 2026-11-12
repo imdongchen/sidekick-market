@@ -1,19 +1,43 @@
+import { DesignSelectBridge } from '@/components/marketing/design-select-bridge'
+import { PatchApplier } from '@/components/marketing/patch-applier'
 import { Link } from '@/components/link'
 import { Logo } from '@/components/logo'
 import type { HomepageContent } from '@/lib/marketing/homepage-schema'
+import type { ElementPatch } from '@/lib/marketing/patches'
 
 type Props = {
   content: HomepageContent
   /** Banner shown when rendering a draft preview */
   previewBanner?: string | null
+  /** Element patches to apply after paint */
+  patches?: ElementPatch[]
+  /** Enable click-to-select for Design mode iframe */
+  designSelect?: boolean
 }
 
-export function HomepageView({ content, previewBanner }: Props) {
+export function HomepageView({
+  content,
+  previewBanner,
+  patches = [],
+  designSelect = false,
+}: Props) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#07131f] text-[#e8f2f8]">
       {previewBanner ? (
-        <div className="relative z-20 bg-amber-400 px-4 py-2 text-center text-sm font-medium text-amber-950">
+        <div
+          data-design-ignore
+          className="relative z-20 bg-amber-400 px-4 py-2 text-center text-sm font-medium text-amber-950"
+        >
           {previewBanner}
+        </div>
+      ) : null}
+
+      {designSelect ? (
+        <div
+          data-design-ignore
+          className="relative z-20 bg-emerald-700/90 px-4 py-2 text-center text-sm font-medium text-white"
+        >
+          Click any element to select it, then prompt a change in Design mode.
         </div>
       ) : null}
 
@@ -32,12 +56,14 @@ export function HomepageView({ content, previewBanner }: Props) {
           <Link
             href="/"
             title="Home"
+            data-design-id="logo-link"
             className="inline-flex [&_path]:fill-white [&_span]:text-white"
           >
             <Logo className="h-8 sm:h-9" />
           </Link>
           <Link
             href="/login"
+            data-design-id="admin-login-label"
             className="text-sm font-medium tracking-wide text-white/40 transition hover:text-white/80"
           >
             {content.adminLoginLabel}
@@ -47,19 +73,29 @@ export function HomepageView({ content, previewBanner }: Props) {
         <main className="flex flex-1 flex-col justify-between gap-12 pb-10 pt-10 sm:gap-16 sm:pb-14 sm:pt-14 lg:gap-20 lg:pt-16">
           <div className="px-6 sm:px-10 lg:px-14">
             <div className="max-w-3xl">
-              <h1 className="hero-fade-in hero-delay-1 font-display text-[clamp(3.5rem,12vw,8.5rem)] font-medium leading-[0.85] tracking-tight text-white">
+              <h1
+                data-design-id="brand"
+                className="hero-fade-in hero-delay-1 font-display text-[clamp(3.5rem,12vw,8.5rem)] font-medium leading-[0.85] tracking-tight text-white"
+              >
                 {content.brand}
               </h1>
-              <p className="hero-fade-in hero-delay-2 mt-6 text-balance text-2xl font-medium tracking-tight text-white/90 sm:mt-8 sm:text-3xl lg:text-4xl">
+              <p
+                data-design-id="tagline"
+                className="hero-fade-in hero-delay-2 mt-6 text-balance text-2xl font-medium tracking-tight text-white/90 sm:mt-8 sm:text-3xl lg:text-4xl"
+              >
                 {content.tagline}
               </p>
-              <p className="hero-fade-in hero-delay-3 mt-4 max-w-md text-base leading-relaxed text-white/55 sm:mt-5 sm:text-lg">
+              <p
+                data-design-id="body"
+                className="hero-fade-in hero-delay-3 mt-4 max-w-md text-base leading-relaxed text-white/55 sm:mt-5 sm:text-lg"
+              >
                 {content.body}
               </p>
 
               <div className="hero-fade-in hero-delay-4 mt-8 flex flex-wrap items-center gap-x-6 gap-y-4 sm:mt-10">
                 <Link
                   href={content.appStoreUrl}
+                  data-design-id="app-store-link"
                   className="transition duration-300 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white/40"
                 >
                   <img
@@ -70,7 +106,10 @@ export function HomepageView({ content, previewBanner }: Props) {
                     height={56}
                   />
                 </Link>
-                <p className="text-sm font-medium tracking-wide text-white/40">
+                <p
+                  data-design-id="android-note"
+                  className="text-sm font-medium tracking-wide text-white/40"
+                >
                   {content.androidNote}
                 </p>
               </div>
@@ -82,6 +121,7 @@ export function HomepageView({ content, previewBanner }: Props) {
               {content.previews.map((preview, index) => (
                 <figure
                   key={preview.id}
+                  data-design-id={`preview-${preview.id}`}
                   className="hero-phone shrink-0"
                   style={{ animationDelay: `${0.55 + index * 0.12}s` }}
                 >
@@ -100,10 +140,11 @@ export function HomepageView({ content, previewBanner }: Props) {
         </main>
 
         <footer className="hero-fade-in hero-delay-6 relative px-6 pb-8 text-sm text-white/35 sm:px-10 lg:px-14">
-          <p>
-            {content.contactPrompt}{' '}
+          <p data-design-id="footer-line">
+            <span data-design-id="contact-prompt">{content.contactPrompt}</span>{' '}
             <a
               href={`mailto:${content.contactEmail}`}
+              data-design-id="contact-email"
               className="text-white/50 underline decoration-white/20 underline-offset-4 transition hover:text-white/80"
             >
               {content.contactEmail}
@@ -111,6 +152,9 @@ export function HomepageView({ content, previewBanner }: Props) {
           </p>
         </footer>
       </div>
+
+      <PatchApplier patches={patches} />
+      <DesignSelectBridge enabled={designSelect} />
     </div>
   )
 }

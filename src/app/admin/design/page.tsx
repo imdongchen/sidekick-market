@@ -23,8 +23,8 @@ export default async function AdminDesignPage() {
         Design mode
       </h1>
       <p className="mt-1 max-w-2xl text-sm text-zinc-600">
-        Edit marketing pages with prompts, preview drafts, create new pages,
-        then commit and deploy when you are ready.
+        Click any element in the live preview, prompt a change, save a draft,
+        then commit and deploy. Works across different page structures.
       </p>
       <div className="mt-8">
         <DesignMode initialPages={pages} initialDrafts={drafts} />

@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  applyDesignPromptAction,
+  applyElementPromptAction,
   clearDesignPreviewAction,
   commitAndDeployDesignAction,
   createDesignDraftAction,
@@ -9,15 +9,17 @@ import {
   deleteDesignDraftAction,
   deleteDesignPageAction,
   enableDesignPreviewAction,
+  removeElementPatchAction,
   saveDesignDraftAction,
 } from '@/app/admin/design/actions'
+import { DESIGN_SELECT_MESSAGE } from '@/components/marketing/design-select-bridge'
 import {
   DEFAULT_HOMEPAGE_CONTENT,
   HOME_PAGE_SLUG,
   publicPathForSlug,
   slugifyPageTitle,
-  type HomepageContent,
 } from '@/lib/marketing/homepage-schema'
+import type { ElementSelection } from '@/lib/marketing/patches'
 import type {
   MarketingDraft,
   PublishedMarketingPage,
@@ -25,6 +27,7 @@ import type {
 import { clsx } from 'clsx'
 import {
   useCallback,
+  useEffect,
   useMemo,
   useState,
   useTransition,
@@ -32,21 +35,9 @@ import {
 } from 'react'
 
 const EXAMPLE_PROMPTS = [
-  'change the tagline to "Every lap, together"',
-  'change the tagline to "Built for the whole team"',
-  'Make it more energetic about masters swimming',
-] as const
-
-const COPY_FIELDS = [
-  ['brand', 'Brand'],
-  ['tagline', 'Tagline'],
-  ['body', 'Supporting sentence'],
-  ['androidNote', 'Android note'],
-  ['contactPrompt', 'Contact prompt'],
-  ['contactEmail', 'Contact email'],
-  ['metaDescription', 'Meta description'],
-  ['adminLoginLabel', 'Admin login label'],
-  ['appStoreUrl', 'App Store URL'],
+  'change this to "Every lap, together"',
+  'Make this shorter and punchier',
+  'Rewrite for masters swim teams',
 ] as const
 
 type Props = {
@@ -81,13 +72,13 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
   )
   const [activeId, setActiveId] = useState<string | null>(null)
   const [name, setName] = useState('')
-  const [content, setContent] = useState<HomepageContent>(
-    () => initialPages[0]?.content ?? DEFAULT_HOMEPAGE_CONTENT,
+  const [patches, setPatches] = useState(
+    () => initialPages[0]?.patches ?? [],
   )
+  const [selection, setSelection] = useState<ElementSelection | null>(null)
   const [prompt, setPrompt] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [previewOn, setPreviewOn] = useState(false)
   const [previewKey, setPreviewKey] = useState(0)
   const [confirmDeploy, setConfirmDeploy] = useState(false)
   const [showNewPage, setShowNewPage] = useState(false)
@@ -95,7 +86,6 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
   const [newPageSlug, setNewPageSlug] = useState('')
   const [slugTouched, setSlugTouched] = useState(false)
   const [pending, startTransition] = useTransition()
-  /** True while we are auto-creating a draft so fields stay editable. */
   const [ensuringDraft, setEnsuringDraft] = useState(false)
 
   const activePage = pages.find((p) => p.slug === pageSlug) ?? pages[0]
@@ -106,14 +96,31 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
   const active = drafts.find((d) => d.id === activeId) ?? null
   const publicPath = publicPathForSlug(pageSlug)
   const previewSrc = activeId
-    ? `${publicPath}?preview=${encodeURIComponent(activeId)}&t=${previewKey}`
-    : publicPath
+    ? `${publicPath}?preview=${encodeURIComponent(activeId)}&designSelect=1&t=${previewKey}`
+    : `${publicPath}?designSelect=1&t=${previewKey}`
+
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return
+      const data = event.data as {
+        type?: string
+        selection?: ElementSelection
+      }
+      if (data?.type !== DESIGN_SELECT_MESSAGE || !data.selection) return
+      setSelection(data.selection)
+      setError(null)
+      setMessage(`Selected ${data.selection.label}. Describe the change below.`)
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
 
   const selectDraft = useCallback((draft: MarketingDraft) => {
     setActiveId(draft.id)
     setPageSlug(draft.pageSlug)
     setName(draft.name)
-    setContent(draft.content)
+    setPatches(draft.patches)
+    setSelection(null)
     setMessage(null)
     setError(null)
     setPreviewKey((k) => k + 1)
@@ -126,16 +133,16 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       setPageSlug(slug)
       setActiveId(null)
       setName('')
-      setContent(page.content)
+      setPatches(page.patches)
+      setSelection(null)
       setMessage(null)
       setError(null)
-      setPreviewOn(false)
       setPreviewKey((k) => k + 1)
       const first = drafts.find((d) => d.pageSlug === slug)
       if (first) {
         setActiveId(first.id)
         setName(first.name)
-        setContent(first.content)
+        setPatches(first.patches)
       }
     },
     [drafts, pages],
@@ -181,7 +188,6 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
     })
   }
 
-  /** Ensure a draft exists so edits/prompts have somewhere to land. Fields stay editable. */
   async function ensureDraft(): Promise<string | null> {
     if (activeId) return activeId
     setEnsuringDraft(true)
@@ -189,7 +195,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       const result = await createDesignDraftAction({
         name: `Draft ${new Date().toLocaleString()}`,
         pageSlug,
-        content,
+        content: activePage?.content ?? DEFAULT_HOMEPAGE_CONTENT,
       })
       if ('error' in result) {
         setError(result.error)
@@ -198,10 +204,9 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       upsertDraft(result.data)
       setActiveId(result.data.id)
       setName(result.data.name)
-      setContent(result.data.content)
+      setPatches(result.data.patches)
       return result.data.id
     } catch (err) {
-      console.error('[design-mode] ensureDraft', err)
       setError(
         err instanceof Error
           ? err.message
@@ -226,7 +231,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       }
       upsertDraft(result.data)
       selectDraft(result.data)
-      setMessage('New draft created from the published page.')
+      setMessage('New draft created. Click an element in the preview to edit.')
     })
   }
 
@@ -249,13 +254,17 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       setSlugTouched(false)
       selectDraft(result.data.draft)
       setMessage(
-        `Created page “${result.data.page.title}” at ${publicPathForSlug(result.data.page.slug)}. Publish to make it live.`,
+        `Created page “${result.data.page.title}” at ${publicPathForSlug(result.data.page.slug)}. Click elements to edit, then publish.`,
       )
     })
   }
 
   function onApplyPrompt(e?: FormEvent) {
     e?.preventDefault()
+    if (!selection) {
+      setError('Click an element in the preview first.')
+      return
+    }
     const promptText = prompt.trim()
     if (!promptText) {
       setError('Enter a prompt describing the change you want.')
@@ -264,51 +273,51 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
     run(async () => {
       const draftId = await ensureDraft()
       if (!draftId) return
-      const result = await applyDesignPromptAction({
+      const result = await applyElementPromptAction({
         draftId,
         prompt: promptText,
-        content,
+        selection,
       })
       if ('error' in result) {
         setError(result.error)
         return
       }
       upsertDraft(result.data.draft)
-      setContent(result.data.content)
+      setPatches(result.data.draft.patches)
       setPrompt('')
       setPreviewKey((k) => k + 1)
       setMessage(
         result.data.note ||
-          (result.data.source === 'ai'
-            ? 'Applied AI suggestion to the draft.'
-            : 'Applied heuristic edit to the draft.'),
+          `Updated ${result.data.patch.label || result.data.patch.tagName}.`,
       )
     })
   }
 
   function onExamplePrompt(example: string) {
+    if (!selection) {
+      setError('Click an element in the preview first.')
+      return
+    }
     setPrompt(example)
     run(async () => {
       const draftId = await ensureDraft()
       if (!draftId) return
-      const result = await applyDesignPromptAction({
+      const result = await applyElementPromptAction({
         draftId,
         prompt: example,
-        content,
+        selection,
       })
       if ('error' in result) {
         setError(result.error)
         return
       }
       upsertDraft(result.data.draft)
-      setContent(result.data.content)
+      setPatches(result.data.draft.patches)
       setPrompt('')
       setPreviewKey((k) => k + 1)
       setMessage(
         result.data.note ||
-          (result.data.source === 'ai'
-            ? 'Applied AI suggestion to the draft.'
-            : 'Applied heuristic edit to the draft.'),
+          `Updated ${result.data.patch.label || result.data.patch.tagName}.`,
       )
     })
   }
@@ -320,7 +329,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       const result = await saveDesignDraftAction({
         id: draftId,
         name: name || `Draft ${new Date().toLocaleString()}`,
-        content,
+        patches,
       })
       if ('error' in result) {
         setError(result.error)
@@ -328,6 +337,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       }
       upsertDraft(result.data)
       setName(result.data.name)
+      setPatches(result.data.patches)
       setPreviewKey((k) => k + 1)
       setMessage('Draft saved.')
     })
@@ -337,26 +347,19 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
     run(async () => {
       const draftId = await ensureDraft()
       if (!draftId) return
-      const saved = await saveDesignDraftAction({
+      await saveDesignDraftAction({
         id: draftId,
         name: name || `Draft ${new Date().toLocaleString()}`,
-        content,
+        patches,
       })
-      if ('error' in saved) {
-        setError(saved.error)
-        return
-      }
-      upsertDraft(saved.data)
-      setName(saved.data.name)
       const result = await enableDesignPreviewAction(draftId)
       if ('error' in result) {
         setError(result.error)
         return
       }
-      setPreviewOn(true)
       setPreviewKey((k) => k + 1)
       setMessage(
-        `Preview enabled — open ${result.data.previewPath} to view this draft.`,
+        `Preview ready — click elements in the iframe, then prompt changes.`,
       )
     })
   }
@@ -364,9 +367,26 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
   function onClearPreview() {
     run(async () => {
       await clearDesignPreviewAction()
-      setPreviewOn(false)
       setPreviewKey((k) => k + 1)
-      setMessage('Preview cleared — public path shows the published version.')
+      setMessage('Preview cookie cleared.')
+    })
+  }
+
+  function onRemovePatch(designId: string) {
+    if (!activeId) return
+    run(async () => {
+      const result = await removeElementPatchAction({
+        draftId: activeId,
+        designId,
+      })
+      if ('error' in result) {
+        setError(result.error)
+        return
+      }
+      upsertDraft(result.data)
+      setPatches(result.data.patches)
+      setPreviewKey((k) => k + 1)
+      setMessage('Patch removed.')
     })
   }
 
@@ -382,7 +402,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       const result = await commitAndDeployDesignAction({
         draftId,
         name: name || `Draft ${new Date().toLocaleString()}`,
-        content,
+        patches,
       })
       if ('error' in result) {
         setError(result.error)
@@ -390,7 +410,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       }
       upsertDraft(result.data.draft)
       upsertPage(result.data.page)
-      setPreviewOn(false)
+      setPatches(result.data.draft.patches)
       setPreviewKey((k) => k + 1)
       const deploy = result.data.deploy
       setMessage(
@@ -419,7 +439,8 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
         else {
           setActiveId(null)
           setName('')
-          setContent(activePage?.content ?? content)
+          setPatches(activePage?.patches ?? [])
+          setSelection(null)
         }
       }
       setMessage('Draft deleted.')
@@ -445,17 +466,10 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
     })
   }
 
-  function updateField<K extends keyof HomepageContent>(
-    key: K,
-    value: HomepageContent[K],
-  ) {
-    setContent((prev) => ({ ...prev, [key]: value }))
-  }
-
   const busy = pending || ensuringDraft
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
       <div className="space-y-6">
         <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -535,8 +549,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
           </div>
           {pageDrafts.length === 0 ? (
             <p className="mt-3 text-sm text-zinc-500">
-              No drafts yet — edit any field or apply a prompt and a draft will
-              be created automatically.
+              No drafts yet — select an element and apply a prompt to start one.
             </p>
           ) : (
             <ul className="mt-3 divide-y divide-zinc-100">
@@ -557,7 +570,9 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
                       {statusBadge(draft.status)}
                     </span>
                     <span className="mt-0.5 block text-xs text-zinc-500">
-                      Updated {new Date(draft.updatedAt).toLocaleString()}
+                      {draft.patches.length} patch
+                      {draft.patches.length === 1 ? '' : 'es'} · Updated{' '}
+                      {new Date(draft.updatedAt).toLocaleString()}
                     </span>
                   </button>
                   <button
@@ -575,103 +590,106 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
         </section>
 
         <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
-          <h2 className="text-sm font-semibold text-zinc-950">Prompt</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            Describe the change in plain language, or pick an example below.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <h2 className="text-sm font-semibold text-zinc-950">
+            Selected element
+          </h2>
+          {selection ? (
+            <div className="mt-3 rounded-lg bg-zinc-50 p-3 text-sm text-zinc-800 ring-1 ring-zinc-200">
+              <p className="font-medium">{selection.label}</p>
+              <p className="mt-1 font-mono text-[11px] text-zinc-500">
+                {selection.selector}
+              </p>
+              <p className="mt-2 line-clamp-4 text-zinc-600">
+                {selection.textContent || '(no text content)'}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-zinc-500">
+              Click any element in the live preview to select it. Works on
+              headlines, paragraphs, links, buttons — anything in the page DOM.
+            </p>
+          )}
+
+          <h3 className="mt-5 text-sm font-semibold text-zinc-950">Prompt</h3>
+          <div className="mt-2 flex flex-wrap gap-2">
             {EXAMPLE_PROMPTS.map((example) => (
               <button
                 key={example}
                 type="button"
                 onClick={() => onExamplePrompt(example)}
-                disabled={busy}
+                disabled={busy || !selection}
                 className="rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
               >
                 {example}
               </button>
             ))}
           </div>
-          <form onSubmit={onApplyPrompt} className="mt-4 space-y-3">
+          <form onSubmit={onApplyPrompt} className="mt-3 space-y-3">
             <textarea
               id="design-prompt"
-              name="design-prompt"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={3}
-              placeholder="Make the copy punchier for masters swim teams…"
+              placeholder={
+                selection
+                  ? 'Describe how this element should change…'
+                  : 'Select an element in the preview first…'
+              }
               className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none ring-zinc-950 focus:ring-2"
             />
             <button
               type="submit"
-              disabled={busy || !prompt.trim()}
+              disabled={busy || !selection || !prompt.trim()}
               className="rounded-lg bg-zinc-950 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
             >
-              {busy ? 'Working…' : 'Apply prompt'}
+              {busy ? 'Working…' : 'Apply prompt to selection'}
             </button>
           </form>
         </section>
 
         <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
-          <h2 className="text-sm font-semibold text-zinc-950">Copy</h2>
-          <p className="mt-1 text-xs text-zinc-500">
-            All fields are editable. Saving or prompting creates a draft if
-            needed.
-          </p>
-          <div className="mt-4 grid gap-3">
-            <label className="block text-xs font-medium text-zinc-600">
-              Draft name
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Untitled draft"
-                className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none focus:ring-2 focus:ring-zinc-950"
-              />
-            </label>
-            {COPY_FIELDS.map(([key, label]) => (
-              <label key={key} className="block text-xs font-medium text-zinc-600">
-                {label}
-                {key === 'body' || key === 'metaDescription' ? (
-                  <textarea
-                    value={content[key]}
-                    onChange={(e) => updateField(key, e.target.value)}
-                    rows={key === 'body' ? 3 : 2}
-                    className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none focus:ring-2 focus:ring-zinc-950"
-                  />
-                ) : (
-                  <input
-                    value={content[key]}
-                    onChange={(e) => updateField(key, e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none focus:ring-2 focus:ring-zinc-950"
-                  />
-                )}
-              </label>
-            ))}
-          </div>
+          <label className="block text-xs font-medium text-zinc-600">
+            Draft name
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Untitled draft"
+              className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none focus:ring-2 focus:ring-zinc-950"
+            />
+          </label>
 
-          {active && active.promptHistory.length > 0 ? (
-            <div className="mt-5 border-t border-zinc-100 pt-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-                Prompt history
-              </h3>
-              <ul className="mt-2 space-y-2">
-                {active.promptHistory
-                  .slice()
-                  .reverse()
-                  .map((entry, i) => (
-                    <li
-                      key={`${entry.at}-${i}`}
-                      className="text-xs text-zinc-600"
-                    >
-                      <span className="font-medium text-zinc-800">
-                        [{entry.source}]
-                      </span>{' '}
-                      {entry.prompt}
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          ) : null}
+          <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Patches ({patches.length})
+          </h3>
+          {patches.length === 0 ? (
+            <p className="mt-2 text-sm text-zinc-500">No element edits yet.</p>
+          ) : (
+            <ul className="mt-2 space-y-2">
+              {patches.map((patch) => (
+                <li
+                  key={patch.id}
+                  className="flex items-start justify-between gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-700 ring-1 ring-zinc-200"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-zinc-900">
+                      {patch.label || patch.tagName}
+                    </p>
+                    <p className="mt-0.5 line-clamp-2 text-zinc-600">
+                      {patch.value}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onRemovePatch(patch.designId)}
+                    disabled={busy || !activeId}
+                    className="shrink-0 text-zinc-500 hover:text-red-700 disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
 
           <div className="mt-5 flex flex-wrap gap-2 border-t border-zinc-100 pt-4">
             <button
@@ -688,18 +706,16 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
               disabled={busy}
               className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
             >
-              Preview
+              Refresh preview
             </button>
-            {previewOn ? (
-              <button
-                type="button"
-                onClick={onClearPreview}
-                disabled={busy}
-                className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
-              >
-                Clear preview
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={onClearPreview}
+              disabled={busy}
+              className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              Clear preview cookie
+            </button>
             <button
               type="button"
               onClick={onCommitDeploy}
@@ -728,19 +744,16 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-zinc-200">
         <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-950">Live preview</h2>
+            <h2 className="text-sm font-semibold text-zinc-950">
+              Live preview · select mode
+            </h2>
             <p className="text-xs text-zinc-500">
-              {activeId
-                ? `Previewing draft on ${publicPath}`
-                : `Showing published ${publicPath}. Save or prompt to create a draft.`}
+              Hover and click elements to select. Amber = hover, green =
+              selected.
             </p>
           </div>
           <a
-            href={
-              activeId
-                ? `${publicPath}?preview=${encodeURIComponent(activeId)}`
-                : publicPath
-            }
+            href={previewSrc}
             target="_blank"
             rel="noreferrer"
             className="text-xs font-medium text-zinc-600 underline-offset-2 hover:underline"
@@ -776,8 +789,9 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
               Create a new page
             </h3>
             <p className="mt-2 text-sm text-zinc-600">
-              Starts from Sidekick homepage layout. Publish to make it live at{' '}
-              <code className="text-xs">/p/your-slug</code>.
+              Starts from the Sidekick marketing layout. After create, click any
+              element and prompt changes — structure does not need to match
+              title/tagline fields.
             </p>
             <label className="mt-4 block text-xs font-medium text-zinc-600">
               Title
@@ -848,10 +862,9 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
               Publish this draft as the live page?
             </h3>
             <p className="mt-2 text-sm text-zinc-600">
-              Visitors will see the new copy at{' '}
-              <strong className="font-medium">{publicPath}</strong>. With
-              GitHub token configured, this also commits and triggers a Vercel
-              deploy.
+              Element patches will apply on{' '}
+              <strong className="font-medium">{publicPath}</strong> for all
+              visitors.
             </p>
             <div className="mt-5 flex flex-wrap justify-end gap-2">
               <button

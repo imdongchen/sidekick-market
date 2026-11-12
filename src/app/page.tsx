@@ -3,6 +3,7 @@ import { HOME_PAGE_SLUG } from '@/lib/marketing/homepage-schema'
 import { resolvePreviewDraftId } from '@/lib/marketing/resolve-preview'
 import {
   getMarketingDraft,
+  getPublishedPage,
   getPublishedHomepage,
 } from '@/lib/marketing/store'
 import type { Metadata } from 'next'
@@ -10,7 +11,7 @@ import type { Metadata } from 'next'
 export const dynamic = 'force-dynamic'
 
 type Props = {
-  searchParams: { preview?: string }
+  searchParams: { preview?: string; designSelect?: string }
 }
 
 export async function generateMetadata({
@@ -36,16 +37,27 @@ export async function generateMetadata({
 
 export default async function Home({ searchParams }: Props) {
   const previewId = await resolvePreviewDraftId(searchParams, HOME_PAGE_SLUG)
-  let content = await getPublishedHomepage()
+  const designSelect = searchParams.designSelect === '1'
+  const published = await getPublishedPage(HOME_PAGE_SLUG)
+  let content = published?.content ?? (await getPublishedHomepage())
+  let patches = published?.patches ?? []
   let previewBanner: string | null = null
 
   if (previewId) {
     const draft = await getMarketingDraft(previewId)
     if (draft) {
       content = draft.content
+      patches = draft.patches
       previewBanner = `Design preview — draft “${draft.name}”. Live visitors still see the published page.`
     }
   }
 
-  return <HomepageView content={content} previewBanner={previewBanner} />
+  return (
+    <HomepageView
+      content={content}
+      patches={patches}
+      previewBanner={previewBanner}
+      designSelect={designSelect}
+    />
+  )
 }

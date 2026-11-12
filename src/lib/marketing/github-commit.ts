@@ -93,6 +93,7 @@ export async function commitHomepagePublish(
       slug: pageSlug,
       title: pageSlug === HOME_PAGE_SLUG ? 'Homepage' : pageSlug,
       content,
+      patches: [],
       updatedAt: new Date().toISOString(),
       publishedAt: new Date().toISOString(),
     },
@@ -133,10 +134,11 @@ async function commitViaGitHub(input: {
 
   const payload =
     page.slug === HOME_PAGE_SLUG
-      ? page.content
+      ? { ...page.content, patches: page.patches }
       : {
           title: page.title,
           content: page.content,
+          patches: page.patches,
           updatedAt: page.updatedAt,
           publishedAt: page.publishedAt,
         }

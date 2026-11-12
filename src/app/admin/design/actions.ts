@@ -1,6 +1,6 @@
 'use server'
 
-import { generateHomepageFromPrompt } from '@/lib/marketing/generate'
+import { generateElementEdit } from '@/lib/marketing/generate-element'
 import { commitPagePublish } from '@/lib/marketing/github-commit'
 import {
   HOME_PAGE_SLUG,
@@ -9,6 +9,12 @@ import {
   slugifyPageTitle,
   type HomepageContent,
 } from '@/lib/marketing/homepage-schema'
+import {
+  shortElementLabel,
+  upsertPatch,
+  type ElementPatch,
+  type ElementSelection,
+} from '@/lib/marketing/patches'
 import {
   MARKETING_PREVIEW_COOKIE,
   marketingPreviewCookieOptions,
@@ -142,69 +148,107 @@ export async function deleteDesignPageAction(
 export async function saveDesignDraftAction(input: {
   id: string
   name?: string
-  content: HomepageContent
+  content?: HomepageContent
+  patches?: ElementPatch[]
 }): Promise<DesignActionResult<MarketingDraft>> {
   await requireStaff()
-  const parsed = homepageContentSchema.safeParse(input.content)
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? 'Invalid content' }
+  if (input.content) {
+    const parsed = homepageContentSchema.safeParse(input.content)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? 'Invalid content' }
+    }
   }
   const draft = await updateMarketingDraft(input.id, {
     name: input.name,
-    content: parsed.data,
+    content: input.content,
+    patches: input.patches,
     status: 'draft',
   })
   if (!draft) return { error: 'Draft not found' }
   return { success: true, data: draft }
 }
 
-export async function applyDesignPromptAction(input: {
+export async function applyElementPromptAction(input: {
   draftId: string
   prompt: string
-  /** Optional working content; defaults to draft content */
-  content?: HomepageContent
+  selection: ElementSelection
 }): Promise<
   DesignActionResult<{
-    content: HomepageContent
     draft: MarketingDraft
+    patch: ElementPatch
     source: 'ai' | 'heuristic'
     note?: string
   }>
 > {
+  try {
+    await requireStaff()
+    const draft = await getMarketingDraft(input.draftId)
+    if (!draft) return { error: 'Draft not found' }
+
+    const result = await generateElementEdit(input.selection, input.prompt)
+    if ('error' in result) return { error: result.error }
+
+    const now = new Date().toISOString()
+    const patch: ElementPatch = {
+      id: `patch_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      designId: input.selection.designId,
+      selector: input.selection.selector,
+      tagName: input.selection.tagName,
+      mode: result.mode,
+      value: result.value,
+      previousValue: input.selection.textContent,
+      label: shortElementLabel(input.selection),
+      updatedAt: now,
+    }
+
+    const updated = await updateMarketingDraft(input.draftId, {
+      patches: upsertPatch(draft.patches, patch),
+      promptHistory: [
+        ...draft.promptHistory,
+        {
+          prompt: input.prompt.trim(),
+          at: now,
+          source: result.source,
+          designId: input.selection.designId,
+        },
+      ],
+      status: 'draft',
+    })
+    if (!updated) return { error: 'Failed to update draft' }
+
+    return {
+      success: true,
+      data: {
+        draft: updated,
+        patch,
+        source: result.source,
+        note: result.note,
+      },
+    }
+  } catch (err) {
+    console.error('[applyElementPromptAction]', err)
+    return {
+      error:
+        err instanceof Error
+          ? `Could not apply prompt: ${err.message}`
+          : 'Could not apply prompt. Try again.',
+    }
+  }
+}
+
+export async function removeElementPatchAction(input: {
+  draftId: string
+  designId: string
+}): Promise<DesignActionResult<MarketingDraft>> {
   await requireStaff()
   const draft = await getMarketingDraft(input.draftId)
   if (!draft) return { error: 'Draft not found' }
-
-  const base = input.content
-    ? homepageContentSchema.parse(input.content)
-    : draft.content
-
-  const result = await generateHomepageFromPrompt(base, input.prompt)
-  if ('error' in result) return { error: result.error }
-
   const updated = await updateMarketingDraft(input.draftId, {
-    content: result.content,
-    promptHistory: [
-      ...draft.promptHistory,
-      {
-        prompt: input.prompt.trim(),
-        at: new Date().toISOString(),
-        source: result.source,
-      },
-    ],
+    patches: draft.patches.filter((p) => p.designId !== input.designId),
     status: 'draft',
   })
   if (!updated) return { error: 'Failed to update draft' }
-
-  return {
-    success: true,
-    data: {
-      content: result.content,
-      draft: updated,
-      source: result.source,
-      note: result.note,
-    },
-  }
+  return { success: true, data: updated }
 }
 
 export async function enableDesignPreviewAction(
@@ -222,7 +266,9 @@ export async function enableDesignPreviewAction(
   const base = publicPathForSlug(draft.pageSlug)
   return {
     success: true,
-    data: { previewPath: `${base}?preview=${encodeURIComponent(draftId)}` },
+    data: {
+      previewPath: `${base}?preview=${encodeURIComponent(draftId)}&designSelect=1`,
+    },
   }
 }
 
@@ -254,7 +300,7 @@ export async function deleteDesignDraftAction(
 export async function commitAndDeployDesignAction(input: {
   draftId: string
   name?: string
-  content?: HomepageContent
+  patches?: ElementPatch[]
 }): Promise<
   DesignActionResult<{
     draft: MarketingDraft
@@ -267,16 +313,10 @@ export async function commitAndDeployDesignAction(input: {
   const existing = await getMarketingDraft(input.draftId)
   if (!existing) return { error: 'Draft not found' }
 
-  if (input.content || input.name) {
-    const parsed = input.content
-      ? homepageContentSchema.safeParse(input.content)
-      : { success: true as const, data: existing.content }
-    if (!parsed.success) {
-      return { error: parsed.error.issues[0]?.message ?? 'Invalid content' }
-    }
+  if (input.name || input.patches) {
     await updateMarketingDraft(input.draftId, {
       name: input.name,
-      content: parsed.data,
+      patches: input.patches,
     })
   }
 

@@ -6,16 +6,17 @@ import {
   validateNewPageSlug,
   type HomepageContent,
 } from '@/lib/marketing/homepage-schema'
+import {
+  parseElementPatches,
+  type ElementPatch,
+  type ElementPromptEntry,
+} from '@/lib/marketing/patches'
 import { promises as fs } from 'fs'
 import path from 'path'
 
 export type MarketingDraftStatus = 'draft' | 'published'
 
-export type MarketingPromptEntry = {
-  prompt: string
-  at: string
-  source: 'ai' | 'heuristic' | 'manual'
-}
+export type MarketingPromptEntry = ElementPromptEntry
 
 export type MarketingDraft = {
   id: string
@@ -23,7 +24,10 @@ export type MarketingDraft = {
   pageSlug: string
   name: string
   status: MarketingDraftStatus
+  /** Base template content used to render the React page shell. */
   content: HomepageContent
+  /** Element-level overrides from click-to-select prompts. */
+  patches: ElementPatch[]
   promptHistory: MarketingPromptEntry[]
   createdAt: string
   updatedAt: string
@@ -36,6 +40,7 @@ export type PublishedMarketingPage = {
   slug: string
   title: string
   content: HomepageContent
+  patches: ElementPatch[]
   updatedAt: string
   publishedAt: string
 }
@@ -149,14 +154,20 @@ function defaultPageTitle(slug: string) {
 }
 
 function pagePayload(page: PublishedMarketingPage) {
-  return page.slug === HOME_PAGE_SLUG
-    ? page.content
-    : {
-        title: page.title,
-        content: page.content,
-        updatedAt: page.updatedAt,
-        publishedAt: page.publishedAt,
-      }
+  // Homepage.json stays content-first for backwards compatibility, with patches alongside.
+  if (page.slug === HOME_PAGE_SLUG) {
+    return {
+      ...page.content,
+      patches: page.patches,
+    }
+  }
+  return {
+    title: page.title,
+    content: page.content,
+    patches: page.patches,
+    updatedAt: page.updatedAt,
+    publishedAt: page.publishedAt,
+  }
 }
 
 async function readPageJson(
@@ -180,6 +191,9 @@ async function readPageJson(
       slug,
       title: parsed.title?.trim() || defaultPageTitle(slug),
       content,
+      patches: parseElementPatches(
+        (parsed as { patches?: unknown }).patches,
+      ),
       updatedAt: parsed.updatedAt ?? now,
       publishedAt: parsed.publishedAt ?? now,
     }
@@ -251,6 +265,10 @@ async function loadDraftsFromDisk(): Promise<MarketingDraft[]> {
             ...parsed,
             pageSlug: parsed.pageSlug || HOME_PAGE_SLUG,
             content: parseHomepageContent(parsed.content),
+            patches: parseElementPatches(parsed.patches),
+            promptHistory: Array.isArray(parsed.promptHistory)
+              ? parsed.promptHistory
+              : [],
           })
         }
       } catch {
@@ -293,6 +311,7 @@ async function seedMemoryIfNeeded() {
       slug: HOME_PAGE_SLUG,
       title: 'Homepage',
       content: DEFAULT_HOMEPAGE_CONTENT,
+      patches: [],
       updatedAt: new Date().toISOString(),
       publishedAt: new Date().toISOString(),
     } satisfies PublishedMarketingPage)
@@ -359,6 +378,7 @@ export async function createMarketingDraft(input: {
   name: string
   pageSlug?: string
   content?: HomepageContent
+  patches?: ElementPatch[]
   createdBy: string
   promptHistory?: MarketingPromptEntry[]
 }): Promise<MarketingDraft> {
@@ -374,6 +394,9 @@ export async function createMarketingDraft(input: {
     content: input.content
       ? parseHomepageContent(input.content)
       : structuredClone(published?.content ?? DEFAULT_HOMEPAGE_CONTENT),
+    patches:
+      input.patches ??
+      structuredClone(published?.patches ?? []),
     promptHistory: input.promptHistory ?? [],
     createdAt: now,
     updatedAt: now,
@@ -420,6 +443,7 @@ export async function createMarketingPage(input: {
     slug: valid.slug,
     title,
     content,
+    patches: [],
     updatedAt: now,
     publishedAt: '', // empty = not live yet
   }
@@ -444,6 +468,7 @@ export async function updateMarketingDraft(
   patch: {
     name?: string
     content?: HomepageContent
+    patches?: ElementPatch[]
     promptHistory?: MarketingPromptEntry[]
     status?: MarketingDraftStatus
     publishedAt?: string | null
@@ -458,6 +483,10 @@ export async function updateMarketingDraft(
     content: patch.content
       ? parseHomepageContent(patch.content)
       : existing.content,
+    patches:
+      patch.patches !== undefined
+        ? parseElementPatches(patch.patches)
+        : existing.patches,
     promptHistory: patch.promptHistory ?? existing.promptHistory,
     status: patch.status ?? existing.status,
     publishedAt:
@@ -492,12 +521,14 @@ export async function publishMarketingDraft(
   if (!draft) return null
 
   const content = parseHomepageContent(draft.content)
+  const patches = parseElementPatches(draft.patches)
   const now = new Date().toISOString()
   const existing = memory().pages.get(draft.pageSlug)
   const page: PublishedMarketingPage = {
     slug: draft.pageSlug,
     title: existing?.title || defaultPageTitle(draft.pageSlug),
     content,
+    patches,
     updatedAt: now,
     publishedAt: now,
   }

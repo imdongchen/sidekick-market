@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 
 type Props = {
   params: { slug: string }
-  searchParams: { preview?: string }
+  searchParams: { preview?: string; designSelect?: string }
 }
 
 export async function generateMetadata({
@@ -48,6 +48,7 @@ export default async function MarketingPage({ params, searchParams }: Props) {
   const slug = params.slug
   if (slug === HOME_PAGE_SLUG) notFound()
 
+  const designSelect = searchParams.designSelect === '1'
   const previewId = await resolvePreviewDraftId(searchParams, slug)
   if (previewId) {
     const draft = await getMarketingDraft(previewId)
@@ -55,6 +56,8 @@ export default async function MarketingPage({ params, searchParams }: Props) {
       return (
         <HomepageView
           content={draft.content}
+          patches={draft.patches}
+          designSelect={designSelect}
           previewBanner={`Design preview — draft “${draft.name}”. Live visitors still see the published page.`}
         />
       )
@@ -64,5 +67,11 @@ export default async function MarketingPage({ params, searchParams }: Props) {
   const page = await getPublishedPage(slug)
   if (!page || !(await isPageLive(slug))) notFound()
 
-  return <HomepageView content={page.content} />
+  return (
+    <HomepageView
+      content={page.content}
+      patches={page.patches}
+      designSelect={designSelect}
+    />
+  )
 }
