@@ -16,12 +16,14 @@ import {
   DESIGN_SELECT_MESSAGE,
   DESIGN_SELECT_MODE_MESSAGE,
 } from '@/components/marketing/design-select-bridge'
+import { DESIGN_CONTENT_MESSAGE } from '@/components/marketing/content-applier'
 import { DESIGN_PATCHES_MESSAGE } from '@/components/marketing/patch-applier'
 import {
   DEFAULT_HOMEPAGE_CONTENT,
   HOME_PAGE_SLUG,
   publicPathForSlug,
   slugifyPageTitle,
+  type HomepageContent,
 } from '@/lib/marketing/homepage-schema'
 import type { ElementPatch, ElementSelection } from '@/lib/marketing/patches'
 import type {
@@ -41,10 +43,16 @@ import {
 
 const DRAFTS_STORAGE_KEY = 'sidekick-design-drafts-v1'
 
-const EXAMPLE_PROMPTS = [
+const ELEMENT_EXAMPLE_PROMPTS = [
   'change this to "Every lap, together"',
   'Make this shorter and punchier',
   'Rewrite for masters swim teams',
+] as const
+
+const PAGE_EXAMPLE_PROMPTS = [
+  'Make the tagline punchier for masters teams',
+  'Shorten the hero body copy',
+  'Rewrite the page for club swim coaches',
 ] as const
 
 type Props = {
@@ -142,6 +150,15 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
     )
   }, [])
 
+  const pushContentToPreview = useCallback((content: HomepageContent) => {
+    const frame = iframeRef.current?.contentWindow
+    if (!frame) return
+    frame.postMessage(
+      { type: DESIGN_CONTENT_MESSAGE, content },
+      window.location.origin,
+    )
+  }, [])
+
   const pushSelectModeToPreview = useCallback((active: boolean) => {
     const frame = iframeRef.current?.contentWindow
     if (!frame) return
@@ -152,9 +169,20 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
   }, [])
 
   const syncPreviewFrame = useCallback(() => {
+    const draft = drafts.find((d) => d.id === activeId)
+    const content =
+      draft?.content ?? activePage?.content ?? DEFAULT_HOMEPAGE_CONTENT
+    pushContentToPreview(content)
     pushPatchesToPreview(patchesRef.current)
     pushSelectModeToPreview(selectModeRef.current)
-  }, [pushPatchesToPreview, pushSelectModeToPreview])
+  }, [
+    activeId,
+    activePage?.content,
+    drafts,
+    pushContentToPreview,
+    pushPatchesToPreview,
+    pushSelectModeToPreview,
+  ])
 
   useEffect(() => {
     const stored = readStoredDrafts()
@@ -357,7 +385,9 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       }
       upsertDraft(result.data)
       selectDraft(result.data)
-      setMessage('New draft created. Click an element in the preview to edit.')
+      setMessage(
+        'New draft created. Prompt the whole page, or toggle Select element to target one node.',
+      )
     })
   }
 
@@ -380,19 +410,14 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       setSlugTouched(false)
       selectDraft(result.data.draft)
       setMessage(
-        `Created page “${result.data.page.title}” at ${publicPathForSlug(result.data.page.slug)}. Click elements to edit, then publish.`,
+        `Created page “${result.data.page.title}” at ${publicPathForSlug(result.data.page.slug)}. Prompt the page or select an element, then publish.`,
       )
     })
   }
 
-  function onApplyPrompt(e?: FormEvent) {
-    e?.preventDefault()
-    if (!selection) {
-      setError('Click an element in the preview first.')
-      return
-    }
-    const promptText = prompt.trim()
-    if (!promptText) {
+  function applyPromptText(promptText: string) {
+    const trimmed = promptText.trim()
+    if (!trimmed) {
       setError('Enter a prompt describing the change you want.')
       return
     }
@@ -401,7 +426,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       if (!snapshot) return
       const result = await applyElementPromptAction({
         draftId: snapshot.id,
-        prompt: promptText,
+        prompt: trimmed,
         selection,
         draftSnapshot: snapshot,
       })
@@ -412,42 +437,27 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       upsertDraft(result.data.draft)
       setPatches(result.data.draft.patches)
       setPrompt('')
+      pushContentToPreview(result.data.draft.content)
       pushPatchesToPreview(result.data.draft.patches)
-      setMessage(
-        result.data.note ||
-          `Updated ${result.data.patch.label || result.data.patch.tagName}.`,
-      )
+      if (result.data.scope === 'page') {
+        setMessage(result.data.note || 'Updated the whole page.')
+      } else {
+        setMessage(
+          result.data.note ||
+            `Updated ${result.data.patch?.label || result.data.patch?.tagName}.`,
+        )
+      }
     })
   }
 
+  function onApplyPrompt(e?: FormEvent) {
+    e?.preventDefault()
+    applyPromptText(prompt)
+  }
+
   function onExamplePrompt(example: string) {
-    if (!selection) {
-      setError('Click an element in the preview first.')
-      return
-    }
     setPrompt(example)
-    run(async () => {
-      const snapshot = await ensureDraft()
-      if (!snapshot) return
-      const result = await applyElementPromptAction({
-        draftId: snapshot.id,
-        prompt: example,
-        selection,
-        draftSnapshot: snapshot,
-      })
-      if ('error' in result) {
-        setError(result.error)
-        return
-      }
-      upsertDraft(result.data.draft)
-      setPatches(result.data.draft.patches)
-      setPrompt('')
-      pushPatchesToPreview(result.data.draft.patches)
-      setMessage(
-        result.data.note ||
-          `Updated ${result.data.patch.label || result.data.patch.tagName}.`,
-      )
-    })
+    applyPromptText(example)
   }
 
   function onSaveDraft() {
@@ -489,7 +499,7 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
       }
       setPreviewKey((k) => k + 1)
       setMessage(
-        `Preview ready — toggle Select element, click a target, then prompt.`,
+        `Preview ready — prompt the whole page, or toggle Select element to target one node.`,
       )
     })
   }
@@ -727,10 +737,11 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-zinc-950">
-                Selected element
+                Target {selection ? '(element)' : '(whole page)'}
               </h2>
               <p className="mt-1 text-xs text-zinc-500">
-                Turn selection mode on, then click an element in the preview.
+                Selection is optional. With nothing selected, prompts edit the
+                whole page. Toggle Select element to target one node.
               </p>
             </div>
             <button
@@ -750,7 +761,19 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
           </div>
           {selection ? (
             <div className="mt-3 rounded-lg bg-zinc-50 p-3 text-sm text-zinc-800 ring-1 ring-zinc-200">
-              <p className="font-medium">{selection.label}</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-medium">{selection.label}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelection(null)
+                    setMessage('Cleared selection — prompts will edit the whole page.')
+                  }}
+                  className="shrink-0 text-xs font-medium text-zinc-500 hover:text-zinc-800"
+                >
+                  Clear
+                </button>
+              </div>
               <p className="mt-1 font-mono text-[11px] text-zinc-500">
                 {selection.selector}
               </p>
@@ -761,24 +784,26 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
           ) : (
             <p className="mt-3 text-sm text-zinc-500">
               {selectMode
-                ? 'Click any element in the live preview — headlines, paragraphs, links, buttons, anything in the DOM.'
-                : 'Selection mode is off. Toggle it on to pick an element without following preview links.'}
+                ? 'Click or drag in the preview to select an element. Amber = hover, green = selected.'
+                : 'No element selected — your prompt will update the whole page.'}
             </p>
           )}
 
           <h3 className="mt-5 text-sm font-semibold text-zinc-950">Prompt</h3>
           <div className="mt-2 flex flex-wrap gap-2">
-            {EXAMPLE_PROMPTS.map((example) => (
-              <button
-                key={example}
-                type="button"
-                onClick={() => onExamplePrompt(example)}
-                disabled={busy || !selection}
-                className="rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
-              >
-                {example}
-              </button>
-            ))}
+            {(selection ? ELEMENT_EXAMPLE_PROMPTS : PAGE_EXAMPLE_PROMPTS).map(
+              (example) => (
+                <button
+                  key={example}
+                  type="button"
+                  onClick={() => onExamplePrompt(example)}
+                  disabled={busy}
+                  className="rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+                >
+                  {example}
+                </button>
+              ),
+            )}
           </div>
           <form onSubmit={onApplyPrompt} className="mt-3 space-y-3">
             <textarea
@@ -789,16 +814,20 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
               placeholder={
                 selection
                   ? 'Describe how this element should change…'
-                  : 'Select an element in the preview first…'
+                  : 'Describe how the page should change…'
               }
               className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-950 outline-none ring-zinc-950 focus:ring-2"
             />
             <button
               type="submit"
-              disabled={busy || !selection || !prompt.trim()}
+              disabled={busy || !prompt.trim()}
               className="rounded-lg bg-zinc-950 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
             >
-              {busy ? 'Working…' : 'Apply prompt to selection'}
+              {busy
+                ? 'Working…'
+                : selection
+                  ? 'Apply prompt to selection'
+                  : 'Apply prompt to page'}
             </button>
           </form>
         </section>
@@ -903,8 +932,8 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
             <h2 className="text-sm font-semibold text-zinc-950">Live preview</h2>
             <p className="text-xs text-zinc-500">
               {selectMode
-                ? 'Selection mode on — amber hover, green selected.'
-                : 'Browse normally, or turn on Select element to pick a target.'}
+                ? 'Selection mode on — click or drag; amber hover, green selected.'
+                : 'Prompts edit the whole page unless you select an element.'}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -962,9 +991,8 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
               Create a new page
             </h3>
             <p className="mt-2 text-sm text-zinc-600">
-              Starts from the Sidekick marketing layout. After create, toggle
-              Select element, click a target, and prompt changes — structure
-              does not need to match title/tagline fields.
+              Starts from the Sidekick marketing layout. After create, prompt
+              the whole page or toggle Select element to target one node.
             </p>
             <label className="mt-4 block text-xs font-medium text-zinc-600">
               Title

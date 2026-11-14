@@ -1,3 +1,4 @@
+import { ContentApplier } from '@/components/marketing/content-applier'
 import { DesignSelectBridge } from '@/components/marketing/design-select-bridge'
 import { PatchApplier } from '@/components/marketing/patch-applier'
 import { Link } from '@/components/link'
@@ -146,6 +147,7 @@ export function HomepageView({
         </footer>
       </div>
 
+      <ContentApplier content={content} />
       <PatchApplier patches={patches} />
     </div>
   )

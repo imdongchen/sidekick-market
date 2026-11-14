@@ -129,7 +129,7 @@ export async function generateHomepageFromPrompt(
     return {
       content: applyHeuristicPrompt(current, trimmed),
       source: 'heuristic',
-      note: 'AI gateway is not configured — applied a local heuristic edit. Set AI_GATEWAY_API_KEY for model-powered prompts.',
+      note: 'No AI model key set — used the local copy editor. Add AI_GATEWAY_API_KEY (Vercel AI Gateway) for model-powered prompts.',
     }
   }
 

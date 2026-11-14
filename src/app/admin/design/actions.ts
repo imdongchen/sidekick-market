@@ -1,6 +1,7 @@
 'use server'
 
 import { generateElementEdit } from '@/lib/marketing/generate-element'
+import { generateHomepageFromPrompt } from '@/lib/marketing/generate'
 import { commitPagePublish } from '@/lib/marketing/github-commit'
 import {
   HOME_PAGE_SLUG,
@@ -187,16 +188,29 @@ export async function saveDesignDraftAction(input: {
   return { success: true, data: draft }
 }
 
+/** Design ids owned by structured homepage content fields. */
+const CONTENT_FIELD_DESIGN_IDS = new Set([
+  'brand',
+  'tagline',
+  'body',
+  'android-note',
+  'contact-prompt',
+  'contact-email',
+  'admin-login-label',
+])
+
 export async function applyElementPromptAction(input: {
   draftId: string
   prompt: string
-  selection: ElementSelection
+  /** When omitted/null, the prompt edits the whole page content. */
+  selection?: ElementSelection | null
   /** Browser-held draft — required on Vercel where instances do not share memory. */
   draftSnapshot?: MarketingDraft | null
 }): Promise<
   DesignActionResult<{
     draft: MarketingDraft
-    patch: ElementPatch
+    patch?: ElementPatch
+    scope: 'element' | 'page'
     source: 'ai' | 'heuristic'
     note?: string
   }>
@@ -211,19 +225,87 @@ export async function applyElementPromptAction(input: {
       }
     }
 
-    const result = await generateElementEdit(input.selection, input.prompt)
+    const now = new Date().toISOString()
+    const selection = input.selection ?? null
+
+    // Whole-page prompt — edit structured marketing content.
+    if (!selection) {
+      const result = await generateHomepageFromPrompt(draft.content, input.prompt)
+      if ('error' in result) return { error: result.error }
+
+      const changedIds = new Set<string>()
+      for (const id of CONTENT_FIELD_DESIGN_IDS) {
+        // Drop element patches that would override fields we just rewrote.
+        const fieldKey =
+          id === 'android-note'
+            ? 'androidNote'
+            : id === 'contact-prompt'
+              ? 'contactPrompt'
+              : id === 'contact-email'
+                ? 'contactEmail'
+                : id === 'admin-login-label'
+                  ? 'adminLoginLabel'
+                  : id
+        const prev = draft.content[fieldKey as keyof HomepageContent]
+        const next = result.content[fieldKey as keyof HomepageContent]
+        if (prev !== next) changedIds.add(id)
+      }
+      for (const preview of result.content.previews) {
+        const prev = draft.content.previews.find((p) => p.id === preview.id)
+        if (
+          !prev ||
+          prev.alt !== preview.alt ||
+          prev.src !== preview.src
+        ) {
+          changedIds.add(`preview-${preview.id}`)
+        }
+      }
+
+      const patches = draft.patches.filter((p) => !changedIds.has(p.designId))
+
+      const updated = await updateMarketingDraft(
+        input.draftId,
+        {
+          content: result.content,
+          patches,
+          promptHistory: [
+            ...draft.promptHistory,
+            {
+              prompt: input.prompt.trim(),
+              at: now,
+              source: result.source,
+              designId: 'page',
+            },
+          ],
+          status: 'draft',
+        },
+        draft,
+      )
+      if (!updated) return { error: 'Failed to update draft' }
+
+      return {
+        success: true,
+        data: {
+          draft: updated,
+          scope: 'page',
+          source: result.source,
+          note: result.note || 'Updated the whole page from your prompt.',
+        },
+      }
+    }
+
+    const result = await generateElementEdit(selection, input.prompt)
     if ('error' in result) return { error: result.error }
 
-    const now = new Date().toISOString()
     const patch: ElementPatch = {
       id: `patch_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-      designId: input.selection.designId,
-      selector: input.selection.selector,
-      tagName: input.selection.tagName,
+      designId: selection.designId,
+      selector: selection.selector,
+      tagName: selection.tagName,
       mode: result.mode,
       value: result.value,
-      previousValue: input.selection.textContent,
-      label: shortElementLabel(input.selection),
+      previousValue: selection.textContent,
+      label: shortElementLabel(selection),
       updatedAt: now,
     }
 
@@ -237,7 +319,7 @@ export async function applyElementPromptAction(input: {
             prompt: input.prompt.trim(),
             at: now,
             source: result.source,
-            designId: input.selection.designId,
+            designId: selection.designId,
           },
         ],
         status: 'draft',
@@ -251,6 +333,7 @@ export async function applyElementPromptAction(input: {
       data: {
         draft: updated,
         patch,
+        scope: 'element',
         source: result.source,
         note: result.note,
       },

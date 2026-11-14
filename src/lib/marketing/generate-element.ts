@@ -46,12 +46,12 @@ export function applyElementHeuristic(
           `alt="${quoted[0].replace(/"/g, '&quot;')}"`,
         ),
         source: 'heuristic',
-        note: 'Updated image alt text locally (AI gateway not configured).',
+        note: 'Updated image alt text with the local editor (no AI model key set).',
       }
     }
     return {
       error:
-        'This element has no text content to edit with the local editor. Configure AI_GATEWAY_API_KEY for richer edits.',
+        'This element has no text content the local editor can change. Add AI_GATEWAY_API_KEY (or OPENAI_API_KEY) for richer edits.',
     }
   }
 
@@ -73,7 +73,7 @@ export function applyElementHeuristic(
     mode: 'text',
     value: next,
     source: 'heuristic',
-    note: 'AI gateway is not configured — applied a local heuristic edit to the selected element.',
+    note: 'No AI model key set — used the local editor on this element. Add AI_GATEWAY_API_KEY for smarter prompts.',
   }
 }
 
