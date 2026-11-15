@@ -22,6 +22,20 @@ export function HomepageView({
   patches = [],
   designSelect = false,
 }: Props) {
+  const hasStoreCta = Boolean(content.appStoreUrl.trim())
+  const hasPreviews = content.previews.length > 0
+  const isBlank = !(
+    content.brand.trim() ||
+    content.tagline.trim() ||
+    content.body.trim() ||
+    content.appStoreUrl.trim() ||
+    content.androidNote.trim() ||
+    content.previews.length ||
+    content.contactPrompt.trim() ||
+    content.contactEmail.trim() ||
+    content.adminLoginLabel.trim()
+  )
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#07131f] text-[#e8f2f8]">
       {previewBanner ? (
@@ -55,54 +69,72 @@ export function HomepageView({
           >
             <Logo className="h-8 sm:h-9" />
           </Link>
-          <Link
-            href="/login"
-            data-design-id="admin-login-label"
-            className="text-sm font-medium tracking-wide text-white/40 transition hover:text-white/80"
-          >
-            {content.adminLoginLabel}
-          </Link>
+          {content.adminLoginLabel.trim() ? (
+            <Link
+              href="/login"
+              data-design-id="admin-login-label"
+              className="text-sm font-medium tracking-wide text-white/40 transition hover:text-white/80"
+            >
+              {content.adminLoginLabel}
+            </Link>
+          ) : (
+            <span
+              data-design-id="admin-login-label"
+              className="inline-block min-h-[1.25rem] min-w-[5rem]"
+            />
+          )}
         </header>
 
         <main className="flex flex-1 flex-col justify-between gap-12 pb-10 pt-10 sm:gap-16 sm:pb-14 sm:pt-14 lg:gap-20 lg:pt-16">
           <div className="px-6 sm:px-10 lg:px-14">
             <div className="max-w-3xl">
+              {isBlank ? (
+                <p
+                  data-design-ignore
+                  className="mb-8 text-sm font-medium tracking-wide text-white/35"
+                >
+                  Empty page — prompt to add copy, or select an element.
+                </p>
+              ) : null}
+
               <h1
                 data-design-id="brand"
-                className="hero-fade-in hero-delay-1 font-display text-[clamp(3.5rem,12vw,8.5rem)] font-medium leading-[0.85] tracking-tight text-white"
+                className="hero-fade-in hero-delay-1 min-h-[0.85em] font-display text-[clamp(3.5rem,12vw,8.5rem)] font-medium leading-[0.85] tracking-tight text-white"
               >
                 {content.brand}
               </h1>
               <p
                 data-design-id="tagline"
-                className="hero-fade-in hero-delay-2 mt-6 text-balance text-2xl font-medium tracking-tight text-white/90 sm:mt-8 sm:text-3xl lg:text-4xl"
+                className="hero-fade-in hero-delay-2 mt-6 min-h-[1.5rem] text-balance text-2xl font-medium tracking-tight text-white/90 sm:mt-8 sm:text-3xl lg:text-4xl"
               >
                 {content.tagline}
               </p>
               <p
                 data-design-id="body"
-                className="hero-fade-in hero-delay-3 mt-4 max-w-md text-base leading-relaxed text-white/55 sm:mt-5 sm:text-lg"
+                className="hero-fade-in hero-delay-3 mt-4 min-h-[1.25rem] max-w-md text-base leading-relaxed text-white/55 sm:mt-5 sm:text-lg"
               >
                 {content.body}
               </p>
 
               <div className="hero-fade-in hero-delay-4 mt-8 flex flex-wrap items-center gap-x-6 gap-y-4 sm:mt-10">
-                <Link
-                  href={content.appStoreUrl}
-                  data-design-id="app-store-link"
-                  className="transition duration-300 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white/40"
-                >
-                  <img
-                    alt="Download on the App Store"
-                    src="/download-on-the-app-store.svg"
-                    className="h-12 sm:h-14"
-                    width={168}
-                    height={56}
-                  />
-                </Link>
+                {hasStoreCta ? (
+                  <Link
+                    href={content.appStoreUrl}
+                    data-design-id="app-store-link"
+                    className="transition duration-300 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white/40"
+                  >
+                    <img
+                      alt="Download on the App Store"
+                      src="/download-on-the-app-store.svg"
+                      className="h-12 sm:h-14"
+                      width={168}
+                      height={56}
+                    />
+                  </Link>
+                ) : null}
                 <p
                   data-design-id="android-note"
-                  className="text-sm font-medium tracking-wide text-white/40"
+                  className="min-h-[1rem] min-w-[4rem] text-sm font-medium tracking-wide text-white/40"
                 >
                   {content.androidNote}
                 </p>
@@ -110,39 +142,50 @@ export function HomepageView({
             </div>
           </div>
 
-          <div className="hero-fade-in hero-delay-5">
-            <div className="flex gap-3 overflow-x-auto px-6 pb-2 sm:gap-5 sm:px-10 lg:justify-center lg:px-14 lg:pb-0">
-              {content.previews.map((preview, index) => (
-                <figure
-                  key={preview.id}
-                  data-design-id={`preview-${preview.id}`}
-                  className="hero-phone shrink-0"
-                  style={{ animationDelay: `${0.55 + index * 0.12}s` }}
-                >
-                  <img
-                    src={preview.src}
-                    alt={preview.alt}
-                    width={1242}
-                    height={2688}
-                    className="h-[min(52vh,26rem)] w-auto select-none sm:h-[min(58vh,32rem)] lg:h-[min(62vh,36rem)]"
-                    draggable={false}
-                  />
-                </figure>
-              ))}
+          {hasPreviews ? (
+            <div className="hero-fade-in hero-delay-5">
+              <div className="flex gap-3 overflow-x-auto px-6 pb-2 sm:gap-5 sm:px-10 lg:justify-center lg:px-14 lg:pb-0">
+                {content.previews.map((preview, index) => (
+                  <figure
+                    key={preview.id}
+                    data-design-id={`preview-${preview.id}`}
+                    className="hero-phone shrink-0"
+                    style={{ animationDelay: `${0.55 + index * 0.12}s` }}
+                  >
+                    <img
+                      src={preview.src}
+                      alt={preview.alt}
+                      width={1242}
+                      height={2688}
+                      className="h-[min(52vh,26rem)] w-auto select-none sm:h-[min(58vh,32rem)] lg:h-[min(62vh,36rem)]"
+                      draggable={false}
+                    />
+                  </figure>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : null}
         </main>
 
         <footer className="hero-fade-in hero-delay-6 relative px-6 pb-8 text-sm text-white/35 sm:px-10 lg:px-14">
-          <p data-design-id="footer-line">
-            <span data-design-id="contact-prompt">{content.contactPrompt}</span>{' '}
-            <a
-              href={`mailto:${content.contactEmail}`}
-              data-design-id="contact-email"
-              className="text-white/50 underline decoration-white/20 underline-offset-4 transition hover:text-white/80"
-            >
-              {content.contactEmail}
-            </a>
+          <p data-design-id="footer-line" className="min-h-[1rem]">
+            <span data-design-id="contact-prompt">
+              {content.contactPrompt}
+            </span>
+            {content.contactPrompt.trim() && content.contactEmail.trim()
+              ? ' '
+              : null}
+            {content.contactEmail.trim() ? (
+              <a
+                href={`mailto:${content.contactEmail}`}
+                data-design-id="contact-email"
+                className="text-white/50 underline decoration-white/20 underline-offset-4 transition hover:text-white/80"
+              >
+                {content.contactEmail}
+              </a>
+            ) : (
+              <span data-design-id="contact-email" />
+            )}
           </p>
         </footer>
       </div>

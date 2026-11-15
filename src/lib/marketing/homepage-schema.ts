@@ -34,17 +34,34 @@ export const homepagePreviewSchema = z.object({
   alt: z.string().min(1).max(200),
 })
 
+const optionalUrl = z
+  .string()
+  .max(500)
+  .refine(
+    (value) => value === '' || z.string().url().safeParse(value).success,
+    'Invalid URL',
+  )
+
+const optionalEmail = z
+  .string()
+  .max(120)
+  .refine(
+    (value) => value === '' || z.string().email().safeParse(value).success,
+    'Invalid email',
+  )
+
+/** Marketing page copy. Empty strings / empty previews are allowed for blank new pages. */
 export const homepageContentSchema = z.object({
-  brand: z.string().min(1).max(80),
-  tagline: z.string().min(1).max(160),
-  body: z.string().min(1).max(400),
-  appStoreUrl: z.string().url().max(500),
-  androidNote: z.string().min(1).max(120),
-  contactPrompt: z.string().min(1).max(80),
-  contactEmail: z.string().email().max(120),
-  metaDescription: z.string().min(1).max(300),
-  adminLoginLabel: z.string().min(1).max(40),
-  previews: z.array(homepagePreviewSchema).min(1).max(6),
+  brand: z.string().max(80),
+  tagline: z.string().max(160),
+  body: z.string().max(400),
+  appStoreUrl: optionalUrl,
+  androidNote: z.string().max(120),
+  contactPrompt: z.string().max(80),
+  contactEmail: optionalEmail,
+  metaDescription: z.string().max(300),
+  adminLoginLabel: z.string().max(40),
+  previews: z.array(homepagePreviewSchema).max(6),
 })
 
 export type HomepageContent = z.infer<typeof homepageContentSchema>
@@ -56,7 +73,7 @@ export type MarketingPageContent = HomepageContent
 export const homepageContentPatchSchema = homepageContentSchema
   .partial()
   .extend({
-    previews: z.array(homepagePreviewSchema).min(1).max(6).optional(),
+    previews: z.array(homepagePreviewSchema).max(6).optional(),
   })
 
 export type HomepageContentPatch = z.infer<typeof homepageContentPatchSchema>
@@ -90,6 +107,22 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
       alt: 'Profile — monthly, yearly, and lifetime swim stats',
     },
   ],
+}
+
+/** Blank canvas for newly created marketing pages (not a homepage clone). */
+export function emptyMarketingPageContent(): HomepageContent {
+  return {
+    brand: '',
+    tagline: '',
+    body: '',
+    appStoreUrl: '',
+    androidNote: '',
+    contactPrompt: '',
+    contactEmail: '',
+    metaDescription: '',
+    adminLoginLabel: '',
+    previews: [],
+  }
 }
 
 export function parseHomepageContent(raw: unknown): HomepageContent {

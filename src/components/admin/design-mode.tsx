@@ -991,8 +991,8 @@ export function DesignMode({ initialPages, initialDrafts }: Props) {
               Create a new page
             </h3>
             <p className="mt-2 text-sm text-zinc-600">
-              Starts from the Sidekick marketing layout. After create, prompt
-              the whole page or toggle Select element to target one node.
+              Starts as a blank page. After create, prompt the whole page or
+              toggle Select element to add and edit content.
             </p>
             <label className="mt-4 block text-xs font-medium text-zinc-600">
               Title

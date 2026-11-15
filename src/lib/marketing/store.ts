@@ -1,6 +1,7 @@
 import {
   DEFAULT_HOMEPAGE_CONTENT,
   HOME_PAGE_SLUG,
+  emptyMarketingPageContent,
   parseHomepageContent,
   publicPathForSlug,
   validateNewPageSlug,
@@ -472,12 +473,9 @@ export async function createMarketingPage(input: {
   }
 
   const now = new Date().toISOString()
+  // New pages start empty — staff fill them via prompts / selection.
   const content = parseHomepageContent(
-    input.content ?? {
-      ...DEFAULT_HOMEPAGE_CONTENT,
-      tagline: title.slice(0, 160),
-      metaDescription: `${title} — Sidekick swim app for teams.`.slice(0, 300),
-    },
+    input.content ?? emptyMarketingPageContent(),
   )
 
   const page: PublishedMarketingPage = {
