@@ -78,6 +78,88 @@ export const homepageContentPatchSchema = homepageContentSchema
 
 export type HomepageContentPatch = z.infer<typeof homepageContentPatchSchema>
 
+/**
+ * OpenAI structured-output compatible patch schema.
+ * Every property must be required; use null for “leave unchanged”.
+ * Avoids Zod `.partial()` / `.refine()` which OpenAI rejects.
+ */
+export const homepageContentAiPatchSchema = z.object({
+  brand: z
+    .string()
+    .max(80)
+    .nullable()
+    .describe('New brand text, or null to leave unchanged'),
+  tagline: z
+    .string()
+    .max(160)
+    .nullable()
+    .describe('New tagline, or null to leave unchanged'),
+  body: z
+    .string()
+    .max(400)
+    .nullable()
+    .describe('New body copy, or null to leave unchanged'),
+  appStoreUrl: z
+    .string()
+    .max(500)
+    .nullable()
+    .describe('App Store URL, empty string to clear, or null unchanged'),
+  androidNote: z
+    .string()
+    .max(120)
+    .nullable()
+    .describe('Android note, or null unchanged'),
+  contactPrompt: z
+    .string()
+    .max(80)
+    .nullable()
+    .describe('Contact prompt, or null unchanged'),
+  contactEmail: z
+    .string()
+    .max(120)
+    .nullable()
+    .describe('Contact email, or null unchanged'),
+  metaDescription: z
+    .string()
+    .max(300)
+    .nullable()
+    .describe('Meta description, or null unchanged'),
+  adminLoginLabel: z
+    .string()
+    .max(40)
+    .nullable()
+    .describe('Admin login label, or null unchanged'),
+  previews: z
+    .array(homepagePreviewSchema)
+    .max(6)
+    .nullable()
+    .describe('Full preview list replacement, or null unchanged'),
+})
+
+export type HomepageContentAiPatch = z.infer<
+  typeof homepageContentAiPatchSchema
+>
+
+/** Convert AI nullables into a normal partial patch (null/undefined dropped). */
+export function aiPatchToHomepagePatch(
+  patch: HomepageContentAiPatch,
+): HomepageContentPatch {
+  const candidate: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(patch)) {
+    if (value !== null && value !== undefined) candidate[key] = value
+  }
+
+  // Validate field-by-field so one bad URL/email does not discard the rest.
+  const out: HomepageContentPatch = {}
+  for (const [key, value] of Object.entries(candidate)) {
+    const single = homepageContentPatchSchema.safeParse({ [key]: value })
+    if (single.success && key in single.data) {
+      Object.assign(out, single.data)
+    }
+  }
+  return out
+}
+
 export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
   brand: 'Sidekick',
   tagline: 'Swim app for teams',

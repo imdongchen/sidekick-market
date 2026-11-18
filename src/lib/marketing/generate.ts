@@ -3,7 +3,8 @@ import {
   isDesignAiConfigured,
 } from '@/lib/marketing/ai-model'
 import {
-  homepageContentPatchSchema,
+  aiPatchToHomepagePatch,
+  homepageContentAiPatchSchema,
   mergeHomepageContent,
   type HomepageContent,
 } from '@/lib/marketing/homepage-schema'
@@ -14,7 +15,7 @@ const SYSTEM = `You are a brand copywriter for Sidekick, a swim-team mobile app.
 Edit the marketing homepage copy. Keep the brand name "Sidekick" unless the user explicitly asks to rename it.
 Preserve existing screenshot preview image paths (src) unless the user asks to change alts only.
 Tone: confident, athletic, clear — not hypey or corporate. No emojis.
-Return only fields you want to change; omit unchanged fields.
+For every patch field: set a new string (or preview array) to change it, or null to leave it unchanged.
 Do not invent new screenshot image URLs.`
 
 function extractQuoted(prompt: string): string[] {
@@ -135,7 +136,7 @@ export async function generateHomepageFromPrompt(
       model,
       output: Output.object({
         schema: z.object({
-          patch: homepageContentPatchSchema,
+          patch: homepageContentAiPatchSchema,
           summary: z
             .string()
             .max(240)
@@ -143,7 +144,7 @@ export async function generateHomepageFromPrompt(
         }),
       }),
       system: SYSTEM,
-      prompt: `Current homepage JSON:\n${JSON.stringify(current, null, 2)}\n\nStaff request:\n${trimmed}\n\nReturn a patch of fields to update.`,
+      prompt: `Current homepage JSON:\n${JSON.stringify(current, null, 2)}\n\nStaff request:\n${trimmed}\n\nReturn a patch. Use null for any field you are not changing.`,
     })
 
     if (!output?.patch) {
@@ -154,8 +155,17 @@ export async function generateHomepageFromPrompt(
       }
     }
 
+    const patch = aiPatchToHomepagePatch(output.patch)
+    if (Object.keys(patch).length === 0) {
+      return {
+        content: applyHeuristicPrompt(current, trimmed),
+        source: 'heuristic',
+        note: 'Model returned an empty patch — fell back to heuristic edit.',
+      }
+    }
+
     return {
-      content: mergeHomepageContent(current, output.patch),
+      content: mergeHomepageContent(current, patch),
       source: 'ai',
       note: output.summary,
     }
