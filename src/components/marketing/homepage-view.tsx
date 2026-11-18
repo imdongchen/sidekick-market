@@ -111,7 +111,7 @@ export function HomepageView({
               </p>
               <p
                 data-design-id="body"
-                className="hero-fade-in hero-delay-3 mt-4 min-h-[1.25rem] max-w-md text-base leading-relaxed text-white/55 sm:mt-5 sm:text-lg"
+                className="hero-fade-in hero-delay-3 mt-4 min-h-[1.25rem] max-w-xl whitespace-pre-line text-base leading-relaxed text-white/55 sm:mt-5 sm:max-w-2xl sm:text-lg"
               >
                 {content.body}
               </p>

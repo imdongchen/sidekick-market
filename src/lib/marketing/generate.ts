@@ -2,6 +2,7 @@ import {
   getDesignModel,
   isDesignAiConfigured,
 } from '@/lib/marketing/ai-model'
+import { gatherPromptReferenceContext } from '@/lib/marketing/fetch-reference'
 import {
   aiPatchToHomepagePatch,
   homepageContentAiPatchSchema,
@@ -11,10 +12,19 @@ import {
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
 
-const SYSTEM = `You are a brand copywriter for Sidekick, a swim-team mobile app.
-Edit the marketing homepage copy. Keep the brand name "Sidekick" unless the user explicitly asks to rename it.
-Preserve existing screenshot preview image paths (src) unless the user asks to change alts only.
+const SYSTEM = `You write marketing page copy for Sidekick, a swim-team mobile app.
+You edit structured page fields rendered in Sidekick's existing dark athletic layout
+(brand headline, tagline, body, optional store CTA, footer contact). You cannot change layout chrome.
 Tone: confident, athletic, clear — not hypey or corporate. No emojis.
+When the staff request references another page (and reference text is provided), adapt that page's
+purpose and key facts into Sidekick's fields while matching Sidekick visual/voice — do not copy logos,
+competitor brand names as the page brand, or invent screenshot URLs.
+For blank pages (empty brand/tagline/body), fill the fields needed for a complete first draft.
+For fundraising/donation pages: put the campaign title in brand or tagline, put the letter + goals +
+donation options summary in body (use short paragraphs separated by blank lines), put contact in
+contactPrompt/contactEmail, leave appStoreUrl/previews empty ("" / null) unless asked otherwise.
+Keep the brand name "Sidekick" only when editing the product homepage; for other marketing pages,
+use a page-appropriate title in brand.
 For every patch field: set a new string (or preview array) to change it, or null to leave it unchanged.
 Do not invent new screenshot image URLs.`
 
@@ -132,6 +142,7 @@ export async function generateHomepageFromPrompt(
   }
 
   try {
+    const referenceContext = await gatherPromptReferenceContext(trimmed)
     const { output } = await generateText({
       model,
       output: Output.object({
@@ -144,7 +155,11 @@ export async function generateHomepageFromPrompt(
         }),
       }),
       system: SYSTEM,
-      prompt: `Current homepage JSON:\n${JSON.stringify(current, null, 2)}\n\nStaff request:\n${trimmed}\n\nReturn a patch. Use null for any field you are not changing.`,
+      prompt: `Current page JSON:\n${JSON.stringify(current, null, 2)}\n\nStaff request:\n${trimmed}\n\n${
+        referenceContext
+          ? `${referenceContext}\n\n`
+          : ''
+      }Return a patch. Use null for any field you are not changing.`,
     })
 
     if (!output?.patch) {
@@ -167,7 +182,9 @@ export async function generateHomepageFromPrompt(
     return {
       content: mergeHomepageContent(current, patch),
       source: 'ai',
-      note: output.summary,
+      note: output.summary
+        ? `AI: ${output.summary}`
+        : 'AI: Updated page content from your prompt.',
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown AI error'

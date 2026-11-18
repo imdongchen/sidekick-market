@@ -53,11 +53,12 @@ const optionalEmail = z
 /** Marketing page copy. Empty strings / empty previews are allowed for blank new pages. */
 export const homepageContentSchema = z.object({
   brand: z.string().max(80),
-  tagline: z.string().max(160),
-  body: z.string().max(400),
+  tagline: z.string().max(200),
+  /** Longer body for campaign / donation-style pages. */
+  body: z.string().max(2500),
   appStoreUrl: optionalUrl,
   androidNote: z.string().max(120),
-  contactPrompt: z.string().max(80),
+  contactPrompt: z.string().max(120),
   contactEmail: optionalEmail,
   metaDescription: z.string().max(300),
   adminLoginLabel: z.string().max(40),
@@ -91,14 +92,14 @@ export const homepageContentAiPatchSchema = z.object({
     .describe('New brand text, or null to leave unchanged'),
   tagline: z
     .string()
-    .max(160)
+    .max(200)
     .nullable()
     .describe('New tagline, or null to leave unchanged'),
   body: z
     .string()
-    .max(400)
+    .max(2500)
     .nullable()
-    .describe('New body copy, or null to leave unchanged'),
+    .describe('New body copy (may be multi-paragraph), or null unchanged'),
   appStoreUrl: z
     .string()
     .max(500)
@@ -108,10 +109,10 @@ export const homepageContentAiPatchSchema = z.object({
     .string()
     .max(120)
     .nullable()
-    .describe('Android note, or null unchanged'),
+    .describe('Android note / secondary CTA line, or null unchanged'),
   contactPrompt: z
     .string()
-    .max(80)
+    .max(120)
     .nullable()
     .describe('Contact prompt, or null unchanged'),
   contactEmail: z
