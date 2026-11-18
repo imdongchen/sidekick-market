@@ -34,6 +34,22 @@ export function applyHomepageContentToDom(content: HomepageContent) {
       if (preview.src) img.src = preview.src
     }
   }
+
+  const hasCopy = Boolean(
+    content.brand.trim() ||
+      content.tagline.trim() ||
+      content.body.trim() ||
+      content.androidNote.trim() ||
+      content.contactPrompt.trim() ||
+      content.contactEmail.trim() ||
+      content.adminLoginLabel.trim() ||
+      content.previews.length,
+  )
+  if (hasCopy) {
+    document
+      .querySelectorAll('[data-empty-page-hint="1"]')
+      .forEach((el) => el.remove())
+  }
 }
 
 /**

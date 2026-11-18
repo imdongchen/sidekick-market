@@ -91,6 +91,7 @@ export function HomepageView({
               {isBlank ? (
                 <p
                   data-design-ignore
+                  data-empty-page-hint="1"
                   className="mb-8 text-sm font-medium tracking-wide text-white/35"
                 >
                   Empty page — prompt to add copy, or select an element.
