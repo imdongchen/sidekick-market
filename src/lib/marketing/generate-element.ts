@@ -1,14 +1,10 @@
+import {
+  getDesignModel,
+  isDesignAiConfigured,
+} from '@/lib/marketing/ai-model'
 import type { ElementSelection } from '@/lib/marketing/patches'
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
-
-function aiConfigured(): boolean {
-  return Boolean(
-    process.env.AI_GATEWAY_API_KEY ||
-      process.env.VERCEL_OIDC_TOKEN ||
-      process.env.OPENAI_API_KEY,
-  )
-}
 
 function extractQuoted(prompt: string): string[] {
   const matches = [...prompt.matchAll(/["“]([^"”]+)["”]/g)]
@@ -51,7 +47,7 @@ export function applyElementHeuristic(
     }
     return {
       error:
-        'This element has no text content the local editor can change. Add AI_GATEWAY_API_KEY (or OPENAI_API_KEY) for richer edits.',
+        'This element has no text content the local editor can change. Add OPENAI_API_KEY for richer edits.',
     }
   }
 
@@ -73,7 +69,7 @@ export function applyElementHeuristic(
     mode: 'text',
     value: next,
     source: 'heuristic',
-    note: 'No AI model key set — used the local editor on this element. Add AI_GATEWAY_API_KEY for smarter prompts.',
+    note: 'No AI model key set — used the local editor on this element. Add OPENAI_API_KEY for smarter prompts.',
   }
 }
 
@@ -84,13 +80,14 @@ export async function generateElementEdit(
   const trimmed = prompt.trim()
   if (!trimmed) return { error: 'Enter a prompt describing the change.' }
 
-  if (!aiConfigured()) {
+  const model = getDesignModel()
+  if (!isDesignAiConfigured() || !model) {
     return applyElementHeuristic(selection, trimmed)
   }
 
   try {
     const { output } = await generateText({
-      model: 'openai/gpt-5.4',
+      model,
       output: Output.object({
         schema: z.object({
           mode: z

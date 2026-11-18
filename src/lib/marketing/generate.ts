@@ -1,4 +1,8 @@
 import {
+  getDesignModel,
+  isDesignAiConfigured,
+} from '@/lib/marketing/ai-model'
+import {
   homepageContentPatchSchema,
   mergeHomepageContent,
   type HomepageContent,
@@ -12,14 +16,6 @@ Preserve existing screenshot preview image paths (src) unless the user asks to c
 Tone: confident, athletic, clear — not hypey or corporate. No emojis.
 Return only fields you want to change; omit unchanged fields.
 Do not invent new screenshot image URLs.`
-
-function aiConfigured(): boolean {
-  return Boolean(
-    process.env.AI_GATEWAY_API_KEY ||
-      process.env.VERCEL_OIDC_TOKEN ||
-      process.env.OPENAI_API_KEY,
-  )
-}
 
 function extractQuoted(prompt: string): string[] {
   const matches = [...prompt.matchAll(/["“]([^"”]+)["”]/g)]
@@ -125,17 +121,18 @@ export async function generateHomepageFromPrompt(
     return { error: 'Enter a prompt describing the change you want.' }
   }
 
-  if (!aiConfigured()) {
+  const model = getDesignModel()
+  if (!isDesignAiConfigured() || !model) {
     return {
       content: applyHeuristicPrompt(current, trimmed),
       source: 'heuristic',
-      note: 'No AI model key set — used the local copy editor. Add AI_GATEWAY_API_KEY (Vercel AI Gateway) for model-powered prompts.',
+      note: 'No AI model key set — used the local copy editor. Add OPENAI_API_KEY for model-powered prompts.',
     }
   }
 
   try {
     const { output } = await generateText({
-      model: 'openai/gpt-5.4',
+      model,
       output: Output.object({
         schema: z.object({
           patch: homepageContentPatchSchema,
